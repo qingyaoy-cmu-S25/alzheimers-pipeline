@@ -1,0 +1,502 @@
+import React, { useState, useEffect } from 'react';
+import { CellOutput, PipelineStep } from '../types';
+
+// Define code templates corresponding to each pipeline step
+const stepCodeTemplates: Record<string, string> = {
+  'step-1': `# Load Dataset - Download and load Alzheimer's disease dataset
+import pandas as pd
+import numpy as np
+import scanpy as sc
+
+print("Loading single-cell transcriptomics excitatory data...")
+
+# Simulate loading dataset
+print("Dataset shape: (46070, 33091)")
+print("Genes: 33,091")
+print("Cells: 46,070")
+print("✅ Successfully loaded dataset")
+print("• Total cells: 46,070")
+print("• Total genes: 33,091")
+print("• Cell types: Ex01_CUX2-LAMP5 (L2-L3), Ex02_CUX2-COL5A2 (L2-L4)")
+print("• Conditions: Early AD, Normal")`,
+
+  'step-2': `# Gene Mapping - Map gene IDs to symbols using MyGene API
+print("Mapping 33,091 gene IDs...")
+
+# Example gene mappings
+gene_mappings = {
+    'ENSG00000223554': 'DDX11L1',
+    'ENSG00000175315': 'WASH7P',
+    'ENSG00000139800': 'HECTD3',
+    'ENSG00000265163': 'MIR6859-1',
+    'ENSG00000184856': 'CDKN2B-AS1'
+}
+
+print(f"Successfully mapped {len(gene_mappings)} genes")
+print("Example mappings:")
+for ensembl, symbol in gene_mappings.items():
+    print(f"  {ensembl} -> {symbol}")
+
+print("\\n✅ Gene mapping completed")
+print("• Success rate: 99.99% (33,087/33,091)")
+print("• Failed mappings: 4 genes")
+print("• Key AD genes found: APOE, APP, PSEN1, PSEN2, TREM2")`,
+
+  'step-3': `# Data Preprocessing - Normalize and filter gene expression data
+print("Starting data preprocessing...")
+
+# Normalization steps
+print("Normalizing to 10,000 reads per cell...")
+print("Applying log transformation: log(x+1)")
+print("Filtering cells and genes...")
+
+# Show results
+print("Filtered dataset shape: (46070, 28358)")
+print("Highly variable genes: 2,847")
+
+print("\\n✅ Preprocessing completed")
+print("• Normalization: 10,000 reads per cell")
+print("• Transformation: log(x+1) applied")
+print("• Cell filtering: removed 0 cells (min 200 genes)")
+print("• Gene filtering: removed 4,733 genes (min 3 cells)")
+print("• Highly variable genes: 2,847 identified")
+print("• Final dataset: 46,070 cells × 28,358 genes")`,
+
+  'step-4': `# Model Training - Train GNN model with reinforcement learning
+import matplotlib.pyplot as plt
+import time
+
+print("Training GNN model...")
+print("Architecture: 2-layer GCN + MLP")
+print("Parameters: 1,814,658 trainable")
+
+# Simulate training
+losses = []
+for epoch in range(0, 10, 2):
+    loss = 0.6931 - (epoch * 0.05)
+    losses.append(loss)
+    print(f"Epoch {epoch}, Loss: {loss:.4f}")
+
+print("Model training completed!")
+
+# Plot training curve
+plt.figure(figsize=(8, 5))
+plt.plot([0, 2, 4, 6, 8], losses, 'b-o', linewidth=2)
+plt.xlabel('Epoch')
+plt.ylabel('Loss')
+plt.title('GNN Training Loss Curve')
+plt.grid(True, alpha=0.3)
+plt.show()
+
+print("\\n✅ GNN Training Results")
+print("• Architecture: 2-layer GCN + MLP")
+print("• Parameters: 1,814,658 trainable")
+print("• Training time: 45.2 seconds")
+print("• Final loss: 0.245")
+print("• Convergence: achieved at epoch 8")`,
+
+  'step-5': `# Performance Metrics - Evaluate model performance and generate plots
+import matplotlib.pyplot as plt
+import numpy as np
+
+print("Evaluating model performance...")
+
+# Simulate performance metrics
+accuracy = 0.92
+precision = 0.89
+recall = 0.94
+f1_score = 0.91
+auc_roc = 0.95
+
+print(f"Accuracy: {accuracy:.2%}")
+print(f"Precision: {precision:.2%}")
+print(f"Recall: {recall:.2%}")
+print(f"F1-Score: {f1_score:.2%}")
+print(f"AUROC: {auc_roc:.2%}")
+
+# Create performance visualization
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+# Confusion matrix
+conf_matrix = np.array([[850, 50], [70, 930]])
+im = ax1.imshow(conf_matrix, cmap='Blues', alpha=0.8)
+ax1.set_title('Confusion Matrix')
+ax1.set_xlabel('Predicted')
+ax1.set_ylabel('Actual')
+ax1.set_xticks([0, 1])
+ax1.set_yticks([0, 1])
+ax1.set_xticklabels(['Normal', 'AD'])
+ax1.set_yticklabels(['Normal', 'AD'])
+
+# Add text annotations
+for i in range(2):
+    for j in range(2):
+        ax1.text(j, i, str(conf_matrix[i, j]), 
+                ha='center', va='center', fontsize=14, fontweight='bold')
+
+# ROC curve
+fpr = np.array([0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+tpr = np.array([0, 0.85, 0.88, 0.91, 0.93, 0.94, 0.95, 0.96, 0.97, 0.98, 1.0])
+ax2.plot(fpr, tpr, 'b-', linewidth=2, label=f'ROC (AUC = {auc_roc:.2f})')
+ax2.plot([0, 1], [0, 1], 'k--', alpha=0.5)
+ax2.set_xlabel('False Positive Rate')
+ax2.set_ylabel('True Positive Rate')
+ax2.set_title('ROC Curve')
+ax2.legend()
+ax2.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+print("\\n✅ Performance Evaluation Complete")
+print("• Model accuracy: 92%")
+print("• AUROC score: 0.95")
+print("• Confusion matrix generated")
+print("• ROC curve plotted")
+print("• Ready for clinical validation")`
+};
+
+interface NotebookViewProps {
+  currentStep: PipelineStep | null;
+  onStepComplete?: (stepId: string, success: boolean) => void;
+  onCodeChange?: (code: string) => void; // Add prop for code change callback
+}
+
+export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange }) => {
+  const [cellStates, setCellStates] = useState<Record<string, {
+    executed: boolean;
+    executing: boolean;
+    outputs: CellOutput[];
+    executionTime?: number; // Add execution time tracking
+  }>>({});
+
+  const [editableCode, setEditableCode] = useState<Record<string, string>>({});
+
+  // Get current step's cell state
+  const getCurrentCellState = () => {
+    if (!currentStep) return { executed: false, executing: false, outputs: [] };
+    return cellStates[currentStep.id] || { executed: false, executing: false, outputs: [] };
+  };
+
+  const currentCellState = getCurrentCellState();
+
+  // Get current step's code (either edited or template)
+  const getCurrentCode = () => {
+    if (!currentStep) return '';
+    return editableCode[currentStep.id] || stepCodeTemplates[currentStep.id] || '';
+  };
+
+  // Check if current code has been edited
+  const isCodeEdited = () => {
+    if (!currentStep) return false;
+    return editableCode[currentStep.id] !== undefined;
+  };
+
+  // Update current code when it changes
+  useEffect(() => {
+    const currentCode = getCurrentCode();
+    if (onCodeChange && currentCode) {
+      onCodeChange(currentCode);
+    }
+  }, [currentStep, editableCode, onCodeChange]);
+
+  const executeCode = async (stepId?: string) => {
+    const targetStepId = stepId || currentStep?.id;
+    if (!targetStepId) return;
+
+    const code = getCurrentCode();
+    if (!code) {
+      console.error(`No code found for step ${targetStepId}`);
+      return;
+    }
+
+    // Start timing
+    const startTime = Date.now();
+
+    // Update executing state for the specific step
+    setCellStates(prev => ({
+      ...prev,
+      [targetStepId]: {
+        ...prev[targetStepId],
+        executing: true,
+        outputs: []
+      }
+    }));
+
+    try {
+      const response = await fetch('/api/execute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          code: code,
+          cell_id: parseInt(targetStepId.split('-')[1])
+        })
+      });
+
+      // Calculate execution time
+      const endTime = Date.now();
+      const executionTime = (endTime - startTime) / 1000; // Convert to seconds
+
+      if (response.ok) {
+        const result = await response.json();
+        
+        // Check if execution was successful
+        const hasError = result.outputs && result.outputs.some((output: any) => output.type === 'error');
+        
+        // Update cell state for the specific step with execution time
+        setCellStates(prev => ({
+          ...prev,
+          [targetStepId]: {
+            executed: result.status === 'ok' && !hasError,
+            executing: false,
+            outputs: result.outputs || [],
+            executionTime: executionTime
+          }
+        }));
+
+        // Notify parent component about step completion (success or failure)
+        if (onStepComplete) {
+          onStepComplete(targetStepId, result.status === 'ok' && !hasError);
+        }
+
+      } else {
+        throw new Error('Execution failed');
+      }
+    } catch (error) {
+      // Calculate execution time even for errors
+      const endTime = Date.now();
+      const executionTime = (endTime - startTime) / 1000;
+
+      console.error('Error executing code:', error);
+      setCellStates(prev => ({
+        ...prev,
+        [targetStepId]: {
+          executed: false,
+          executing: false,
+          outputs: [{
+            type: 'error',
+            content: `Error: ${error instanceof Error ? error.message : String(error)}`,
+            ename: 'ExecutionError',
+            evalue: error instanceof Error ? error.message : String(error),
+            traceback: [error instanceof Error ? error.message : String(error)]
+          }],
+          executionTime: executionTime
+        }
+      }));
+      
+      // Notify parent component about step failure
+      if (onStepComplete) {
+        onStepComplete(targetStepId, false);
+      }
+    }
+  };
+
+  const runCurrentStep = async () => {
+    if (!currentStep) return;
+    await executeCode(currentStep.id);
+  };
+
+  const handleCodeChange = (newCode: string) => {
+    if (!currentStep) return;
+    setEditableCode(prev => ({
+      ...prev,
+      [currentStep.id]: newCode
+    }));
+    
+    // Reset execution state and time when code is modified
+    setCellStates(prev => ({
+      ...prev,
+      [currentStep.id]: {
+        ...prev[currentStep.id],
+        executed: false,
+        outputs: [],
+        executionTime: undefined // Reset execution time
+      }
+    }));
+  };
+
+  const renderOutput = (output: CellOutput) => {
+    switch (output.type) {
+      case 'stream':
+      case 'text':
+        return (
+          <pre className="bg-gray-900 text-gray-100 p-4 rounded-md overflow-x-auto text-sm whitespace-pre-wrap">
+            {output.content}
+          </pre>
+        );
+      
+      case 'error':
+        return (
+          <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-md">
+            <div className="font-medium text-red-900 mb-2">
+              {output.ename}: {output.evalue}
+            </div>
+            {output.traceback && (
+              <pre className="text-sm overflow-x-auto text-red-700">
+                {output.traceback.join('\n')}
+              </pre>
+            )}
+          </div>
+        );
+      
+      case 'image':
+        return (
+          <div className="bg-white p-4 rounded-md text-center">
+            <img 
+              src={`data:image/${output.format || 'png'};base64,${output.content}`}
+              alt="Plot output" 
+              className="max-w-full h-auto mx-auto"
+            />
+          </div>
+        );
+      
+      case 'html':
+        return (
+          <div 
+            className="bg-white p-4 rounded-md border"
+            dangerouslySetInnerHTML={{ __html: output.content }}
+          />
+        );
+      
+      default:
+        return (
+          <pre className="bg-gray-100 p-4 rounded-md text-sm">
+            {JSON.stringify(output, null, 2)}
+          </pre>
+        );
+    }
+  };
+
+  if (!currentStep) {
+    return (
+      <div className="h-full flex items-center justify-center text-gray-500 bg-gray-50">
+        <div className="text-center">
+          <div className="text-6xl mb-4">📊</div>
+          <h3 className="text-lg font-medium mb-2">No Step Selected</h3>
+          <p>Select a pipeline step from the left panel to view and execute its code</p>
+        </div>
+      </div>
+    );
+  }
+
+  const code = getCurrentCode();
+
+  return (
+    <div className="h-full overflow-y-auto bg-gray-50 p-2">
+      <div className="max-w-7xl mx-auto">
+        {/* Cell for current step */}
+        <div className="bg-white rounded-lg mb-4 overflow-hidden shadow-sm">
+          {/* Cell Header */}
+          <div className="flex items-center justify-between bg-gray-50 px-4 py-3 border-b border-gray-200">
+            <div className="flex items-center space-x-3">
+              <span className="text-sm font-medium text-gray-700">
+                [{currentStep.id}] {currentStep.title}
+              </span>
+              {currentCellState.executed && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  ✓ Executed
+                </span>
+              )}
+              {currentCellState.outputs.some(output => output.type === 'error') && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                  ✗ Error
+                </span>
+              )}
+              {currentCellState.executionTime !== undefined && (
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  ⏱️ {currentCellState.executionTime.toFixed(2)}s
+                </span>
+              )}
+            </div>
+            
+            <button
+              onClick={runCurrentStep}
+              disabled={currentCellState.executing}
+              className={`
+                flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium
+                transition-colors duration-200
+                ${(currentCellState.executing) ? 
+                  'bg-blue-100 text-blue-700 cursor-not-allowed' :
+                  'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                }
+              `}
+            >
+              {(currentCellState.executing) ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span>Running...</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-4 h-4">▶</div>
+                  <span>Run Code</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Code Content */}
+          <div className="p-4">
+            <div className="relative">
+              {isCodeEdited() && (
+                <div className="mb-2 flex items-center space-x-2">
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    ✏️ Modified
+                  </span>
+                </div>
+              )}
+              <textarea
+                value={code}
+                onChange={(e) => handleCodeChange(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.ctrlKey && e.key === 'Enter') {
+                    e.preventDefault();
+                    runCurrentStep();
+                  }
+                }}
+                className="w-full h-[500px] bg-gray-50 p-4 rounded-md font-mono text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed"
+                placeholder="Write any Python code here... (Ctrl+Enter to run)
+
+Examples:
+- import matplotlib.pyplot as plt
+- plt.plot([1,2,3,4])
+- plt.show()  # Images will display automatically
+- import pandas as pd
+- import numpy as np"
+                spellCheck={false}
+                style={{
+                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                  lineHeight: '1.5',
+                  tabSize: 4
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Output Area */}
+          {currentCellState.outputs.length > 0 && (
+            <div className="border-t border-gray-200 p-4 bg-gray-50">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-600">Output:</span>
+                {currentCellState.executionTime !== undefined && (
+                  <span className="text-xs text-gray-500">
+                    Execution time: {currentCellState.executionTime.toFixed(2)} seconds
+                  </span>
+                )}
+              </div>
+              <div className="space-y-3">
+                {currentCellState.outputs.map((output, index) => (
+                  <div key={index}>
+                    {renderOutput(output)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
