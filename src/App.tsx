@@ -91,7 +91,7 @@ function App() {
   return (
     <div className="h-screen flex bg-gray-50">
       {/* Left Panel - Pipeline Steps */}
-      <div className="w-1/5 border-r border-gray-200 bg-white">
+      <div className="w-80 border-r border-gray-200 bg-white flex-shrink-0">
         <PipelinePanel 
           steps={steps}
           currentStepId={currentStepId}
@@ -100,7 +100,7 @@ function App() {
       </div>
 
       {/* Center Panel - Code Execution */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col min-w-0">
         <NotebookPanel
           currentStep={currentStepId ? steps.find(s => s.id === currentStepId) || null : null}
           stepResult={null}
@@ -110,7 +110,7 @@ function App() {
       </div>
 
       {/* Right Panel - Chat */}
-      <div className="w-1/4 border-l border-gray-200 bg-white">
+      <div className="w-96 border-l border-gray-200 bg-white flex-shrink-0">
         <ChatPanel
           messages={messages}
           onSendMessage={handleSendMessage}

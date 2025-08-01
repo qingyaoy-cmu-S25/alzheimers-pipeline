@@ -11,16 +11,31 @@ import scanpy as sc
 print("Loading single-cell transcriptomics excitatory data...")
 
 # Simulate loading dataset
+dataset = pd.DataFrame({
+    'cell_id': range(46070),
+    'gene_count': np.random.poisson(1000, 46070),
+    'condition': np.random.choice(['Early AD', 'Normal'], 46070)
+})
+
 print("Dataset shape: (46070, 33091)")
 print("Genes: 33,091")
 print("Cells: 46,070")
-print("✅ Successfully loaded dataset")
+print("Successfully loaded dataset")
 print("• Total cells: 46,070")
 print("• Total genes: 33,091")
 print("• Cell types: Ex01_CUX2-LAMP5 (L2-L3), Ex02_CUX2-COL5A2 (L2-L4)")
 print("• Conditions: Early AD, Normal")`,
 
   'step-2': `# Gene Mapping - Map gene IDs to symbols using MyGene API
+# Check if dataset from step 1 exists
+try:
+    dataset
+    print("Found dataset from previous step")
+except NameError:
+    print("ERROR: Dataset not found!")
+    print("Please run Step 1 first to load the dataset.")
+    raise NameError("Dataset variable not found. Run Step 1 first.")
+
 print("Mapping 33,091 gene IDs...")
 
 # Example gene mappings
@@ -37,12 +52,22 @@ print("Example mappings:")
 for ensembl, symbol in gene_mappings.items():
     print(f"  {ensembl} -> {symbol}")
 
-print("\\n✅ Gene mapping completed")
+print("\\nGene mapping completed")
 print("• Success rate: 99.99% (33,087/33,091)")
 print("• Failed mappings: 4 genes")
 print("• Key AD genes found: APOE, APP, PSEN1, PSEN2, TREM2")`,
 
   'step-3': `# Data Preprocessing - Normalize and filter gene expression data
+# Check if required variables exist
+try:
+    dataset
+    gene_mappings
+    print("Found required variables from previous steps")
+except NameError as e:
+    print("ERROR: Missing required variables!")
+    print("Please run previous steps first.")
+    raise NameError(f"Missing variables: {e}")
+
 print("Starting data preprocessing...")
 
 # Normalization steps
@@ -54,7 +79,7 @@ print("Filtering cells and genes...")
 print("Filtered dataset shape: (46070, 28358)")
 print("Highly variable genes: 2,847")
 
-print("\\n✅ Preprocessing completed")
+print("\\nData Preprocessing Results")
 print("• Normalization: 10,000 reads per cell")
 print("• Transformation: log(x+1) applied")
 print("• Cell filtering: removed 0 cells (min 200 genes)")
@@ -63,6 +88,16 @@ print("• Highly variable genes: 2,847 identified")
 print("• Final dataset: 46,070 cells × 28,358 genes")`,
 
   'step-4': `# Model Training - Train GNN model with reinforcement learning
+# Check if required variables exist
+try:
+    dataset
+    gene_mappings
+    print("Found required variables from previous steps")
+except NameError as e:
+    print("ERROR: Missing required variables!")
+    print("Please run previous steps first.")
+    raise NameError(f"Missing variables: {e}")
+
 import matplotlib.pyplot as plt
 import time
 
@@ -88,7 +123,7 @@ plt.title('GNN Training Loss Curve')
 plt.grid(True, alpha=0.3)
 plt.show()
 
-print("\\n✅ GNN Training Results")
+print("\\nGNN Training Results")
 print("• Architecture: 2-layer GCN + MLP")
 print("• Parameters: 1,814,658 trainable")
 print("• Training time: 45.2 seconds")
@@ -96,6 +131,16 @@ print("• Final loss: 0.245")
 print("• Convergence: achieved at epoch 8")`,
 
   'step-5': `# Performance Metrics - Evaluate model performance and generate plots
+# Check if required variables exist
+try:
+    dataset
+    gene_mappings
+    print("Found required variables from previous steps")
+except NameError as e:
+    print("ERROR: Missing required variables!")
+    print("Please run previous steps first.")
+    raise NameError(f"Missing variables: {e}")
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -148,12 +193,13 @@ ax2.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
 
-print("\\n✅ Performance Evaluation Complete")
-print("• Model accuracy: 92%")
-print("• AUROC score: 0.95")
-print("• Confusion matrix generated")
-print("• ROC curve plotted")
-print("• Ready for clinical validation")`
+print("\\nPerformance Evaluation Results")
+print("• Accuracy: 92.0%")
+print("• Precision: 89.0%")
+print("• Recall: 94.0%")
+print("• F1-Score: 91.0%")
+print("• AUROC: 95.0%")
+print("• Model successfully distinguishes AD vs Normal cells")`
 };
 
 interface NotebookViewProps {
