@@ -2,6 +2,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import json
+import asyncio
 from typing import List, Optional
 from models.openai_chat import get_openai_streaming_response, format_messages
 from kernel_manager import get_kernel_manager

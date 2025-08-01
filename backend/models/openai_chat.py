@@ -1,8 +1,12 @@
 import openai
 from typing import List, Dict, Generator, Optional
 import json
+import os
 
-OPENAI_API_KEY = "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"
+# Get API key from environment variable
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY environment variable is required")
 
 openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
