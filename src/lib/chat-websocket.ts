@@ -1,4 +1,4 @@
-export interfa      e ChatMessage {
+export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp?: number;
@@ -23,7 +23,7 @@ export class ChatWebSocket {
   constructor(private endpoint: string) {}
 
   connect(callbacks: ChatWebSocketCallbacks = {}): Promise<void> {
-    return new Promise((resolve,    8lreject) => {
+    return new Promise((resolve, reject) => {
       if (this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
         resolve();
         return;
