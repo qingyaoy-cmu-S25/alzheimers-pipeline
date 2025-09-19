@@ -22,6 +22,7 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [currentCode, setCurrentCode] = useState<string>(''); // Add state for current cell code
   const [initialCodes, setInitialCodes] = useState<Record<string, string>>({});
+  const API_BASE = import.meta.env.VITE_API_BASE || '';
 
   const handleStepClick = (stepId: string) => {
     setCurrentStepId(stepId);
@@ -78,7 +79,7 @@ function App() {
   useEffect(() => {
     const fetchSteps = async () => {
       try {
-        const res = await fetch('/api/notebook/cells');
+        const res = await fetch(`${API_BASE}/api/notebook/cells`);
         if (!res.ok) throw new Error('Failed to load notebook steps');
         const data = await res.json();
         const loadedSteps: PipelineStep[] = (data.steps || []).map((s: any) => ({
@@ -98,7 +99,7 @@ function App() {
           loadedSteps.map(async (st) => {
             if (st.notebookCellIndex === undefined) return [st.id, ''];
             try {
-              const r = await fetch(`/api/notebook/cell/${st.notebookCellIndex}`);
+              const r = await fetch(`${API_BASE}/api/notebook/cell/${st.notebookCellIndex}`);
               if (!r.ok) return [st.id, ''];
               const j = await r.json();
               return [st.id, j.source || ''];

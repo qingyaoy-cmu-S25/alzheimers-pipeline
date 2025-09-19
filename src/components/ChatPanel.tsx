@@ -42,7 +42,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, c
 
   useEffect(() => {
     // Initialize WebSocket connection
-    const wsEndpoint = `ws://localhost:8000/ws/chat`;
+    const wsEndpoint = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/chat';
     wsRef.current = new ChatWebSocket(wsEndpoint);
     
     wsRef.current.connect({
