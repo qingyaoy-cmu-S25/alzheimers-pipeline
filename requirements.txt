@@ -1,0 +1,23 @@
+# --- Web framework ---
+fastapi==0.104.1
+uvicorn==0.24.0
+gunicorn==22.0.0
+pydantic==2.5.0
+
+# --- Async / WebSocket ---
+websockets==12.0
+httpx==0.27.0
+
+# --- Notebook + execution ---
+jupyter_client==8.6.0
+psutil==5.9.6
+
+# --- Data + plotting (needed for kernel execution) ---
+numpy==1.26.3
+pandas==2.2.0
+matplotlib==3.8.2
+seaborn==0.13.0
+
+# --- AI / LLM API ---
+openai==1.12.0
+tiktoken==0.7.0
