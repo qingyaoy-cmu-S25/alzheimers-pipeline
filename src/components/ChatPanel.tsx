@@ -26,6 +26,21 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, c
   }, [messages]);
 
   useEffect(() => {
+    const handleErrorMessage = (event: any) => {
+      const { message } = event.detail;
+      if (message) {
+        sendMessageToAI(message, false); // false means don't add to messages (already added)
+      }
+    };
+
+    window.addEventListener('sendErrorMessage', handleErrorMessage);
+    
+    return () => {
+      window.removeEventListener('sendErrorMessage', handleErrorMessage);
+    };
+  }, [messages]); // Include messages in dependency to get latest history
+
+  useEffect(() => {
     // Initialize WebSocket connection
     const wsEndpoint = `ws://localhost:8000/ws/chat`;
     wsRef.current = new ChatWebSocket(wsEndpoint);
@@ -50,52 +65,59 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({ messages, onSendMessage, c
     };
   }, []);
 
+  const sendMessageToAI = (messageText: string, isFromInput: boolean = true) => {
+    if (!wsRef.current?.isConnected || isTyping) return;
+
+    // Create message content that includes current code if available
+    let messageContent = messageText;
+    if (currentCode && currentCode.trim()) {
+      messageContent = `User Message: ${messageText}\n\nCurrent Cell Code:\n\`\`\`python\n${currentCode}\n\`\`\``;
+    }
+    
+    // Add user message immediately only if it's from input (not from error button)
+    if (isFromInput) {
+      onSendMessage(messageText);
+      setInputValue('');
+    }
+    
+    setIsTyping(true);
+    setCurrentMessage('');
+
+    // Convert messages to WebSocket format
+    const history: WSChatMessage[] = messages.map(msg => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content
+    }));
+
+    // Send message via WebSocket with enhanced content
+    let accumulatedMessage = '';
+    wsRef.current.sendMessage(messageContent, history, {
+      onProgress: (chunk: string) => {
+        accumulatedMessage += chunk;
+        setCurrentMessage(accumulatedMessage);
+      },
+      onEnd: () => {
+        // Add the complete assistant message
+        if (accumulatedMessage.trim()) {
+          onSendMessage(accumulatedMessage, 'assistant');
+        }
+        setIsTyping(false);
+        setCurrentMessage('');
+      },
+      onError: (error) => {
+        console.error('Chat error:', error);
+        setIsTyping(false);
+        setCurrentMessage('');
+        // Add error message
+        onSendMessage('Sorry, I encountered an error. Please try again.', 'assistant');
+      }
+    });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputValue.trim() && wsRef.current?.isConnected && !isTyping) {
-      const userMessage = inputValue.trim();
-      
-      // Create message content that includes current code if available
-      let messageContent = userMessage;
-      if (currentCode && currentCode.trim()) {
-        messageContent = `User Message: ${userMessage}\n\nCurrent Cell Code:\n\`\`\`python\n${currentCode}\n\`\`\``;
-      }
-      
-      // Add user message immediately
-      onSendMessage(userMessage);
-      setInputValue('');
-      setIsTyping(true);
-      setCurrentMessage('');
-
-      // Convert messages to WebSocket format
-      const history: WSChatMessage[] = messages.map(msg => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content
-      }));
-
-      // Send message via WebSocket with enhanced content
-      let accumulatedMessage = '';
-      wsRef.current.sendMessage(messageContent, history, {
-        onProgress: (chunk: string) => {
-          accumulatedMessage += chunk;
-          setCurrentMessage(accumulatedMessage);
-        },
-        onEnd: () => {
-          // Add the complete assistant message
-          if (accumulatedMessage.trim()) {
-            onSendMessage(accumulatedMessage, 'assistant');
-          }
-          setIsTyping(false);
-          setCurrentMessage('');
-        },
-        onError: (error) => {
-          console.error('Chat error:', error);
-          setIsTyping(false);
-          setCurrentMessage('');
-          // Add error message
-          onSendMessage('Sorry, I encountered an error. Please try again.', 'assistant');
-        }
-      });
+    if (inputValue.trim()) {
+      sendMessageToAI(inputValue.trim(), true);
     }
   };
 

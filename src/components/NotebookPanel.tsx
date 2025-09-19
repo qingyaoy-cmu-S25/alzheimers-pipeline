@@ -8,13 +8,15 @@ interface NotebookPanelProps {
   stepResult: StepResult | null;
   onStepComplete?: (stepId: string, success: boolean) => void;
   onCodeChange?: (code: string) => void; // Add prop for code change callback
+  onSendErrorToChat?: (errorMessage: string) => void; // Add prop for sending errors to chat
 }
 
 export const NotebookPanel: React.FC<NotebookPanelProps> = ({
   currentStep,
   stepResult,
   onStepComplete,
-  onCodeChange
+  onCodeChange,
+  onSendErrorToChat
 }) => {
   if (!currentStep) {
     return (
@@ -55,6 +57,7 @@ export const NotebookPanel: React.FC<NotebookPanelProps> = ({
           currentStep={currentStep} 
           onStepComplete={onStepComplete}
           onCodeChange={onCodeChange} // Pass the code change handler
+          onSendErrorToChat={onSendErrorToChat} // Pass the error sender handler
         />
       </div>
     </div>

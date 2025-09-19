@@ -206,9 +206,10 @@ interface NotebookViewProps {
   currentStep: PipelineStep | null;
   onStepComplete?: (stepId: string, success: boolean) => void;
   onCodeChange?: (code: string) => void; // Add prop for code change callback
+  onSendErrorToChat?: (errorMessage: string) => void; // Add prop for sending errors to chat
 }
 
-export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange }) => {
+export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange, onSendErrorToChat }) => {
   const [cellStates, setCellStates] = useState<Record<string, {
     executed: boolean;
     executing: boolean;
@@ -245,6 +246,17 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
       onCodeChange(currentCode);
     }
   }, [currentStep, editableCode, onCodeChange]);
+
+  const handleExplainError = (errorOutput: CellOutput) => {
+    if (!onSendErrorToChat || !currentStep) {
+      return;
+    }
+    
+    // Simplified error message - just ask for help with the error type
+    const errorMessage = `Please explain this error: ${errorOutput.ename}: ${errorOutput.evalue}`;
+    
+    onSendErrorToChat(errorMessage);
+  };
 
   const executeCode = async (stepId?: string) => {
     const targetStepId = stepId || currentStep?.id;
@@ -380,9 +392,27 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
               {output.ename}: {output.evalue}
             </div>
             {output.traceback && (
-              <pre className="text-sm overflow-x-auto text-red-700">
+              <pre className="text-sm overflow-x-auto text-red-700 mb-3">
                 {output.traceback.join('\n')}
               </pre>
+            )}
+            {onSendErrorToChat && (
+              <div className="mt-3 pt-3 border-t border-red-200">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleExplainError(output);
+                  }}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-md transition-colors shadow-sm cursor-pointer"
+                  type="button"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Explain this error
+                </button>
+              </div>
             )}
           </div>
         );

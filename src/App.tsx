@@ -88,6 +88,22 @@ function App() {
     setCurrentCode(code);
   };
 
+  // Function to send error message to chat
+  const handleSendErrorToChat = (errorMessage: string) => {
+    // First add the user message to the chat
+    handleSendMessage(errorMessage);
+    
+    // Then trigger the ChatPanel to send this message to the AI
+    // We need to find a way to programmatically trigger the send
+    // For now, let's add a small delay and then trigger the input submission
+    setTimeout(() => {
+      const event = new CustomEvent('sendErrorMessage', { 
+        detail: { message: errorMessage, code: currentCode } 
+      });
+      window.dispatchEvent(event);
+    }, 100);
+  };
+
   return (
     <div className="h-screen flex bg-gray-50">
       {/* Left Panel - Pipeline Steps */}
@@ -106,6 +122,7 @@ function App() {
           stepResult={null}
           onStepComplete={handleStepComplete}
           onCodeChange={handleCodeChange} // Pass the code change handler
+          onSendErrorToChat={handleSendErrorToChat} // Pass the error sender handler
         />
       </div>
 
