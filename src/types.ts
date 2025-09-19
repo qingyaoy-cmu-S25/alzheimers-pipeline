@@ -5,6 +5,7 @@ export interface PipelineStep {
   description: string;
   status: 'pending' | 'running' | 'completed' | 'error';
   executionCount?: number;
+  notebookCellIndex?: number; // absolute notebook cell index for this step
 }
 
 // Chat system interfaces

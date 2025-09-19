@@ -1,42 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { PipelinePanel } from './components/PipelinePanel';
 import { NotebookPanel } from './components/NotebookPanel';
 import { ChatPanel } from './components/ChatPanel';
 import { PipelineStep, ChatMessage } from './types';
 
-// Pipeline steps for Alzheimer's disease analysis
-const initialSteps: PipelineStep[] = [
-  {
-    id: 'step-1',
-    title: 'Load Dataset',
-    description: 'Download and load Alzheimer\'s disease dataset',
-    status: 'pending'
-  },
-  {
-    id: 'step-2',
-    title: 'Gene Mapping',
-    description: 'Map gene IDs to symbols using MyGene API',
-    status: 'pending'
-  },
-  {
-    id: 'step-3',
-    title: 'Data Preprocessing',
-    description: 'Normalize and filter gene expression data',
-    status: 'pending'
-  },
-  {
-    id: 'step-4',
-    title: 'Model Training',
-    description: 'Train GNN model with reinforcement learning',
-    status: 'pending'
-  },
-  {
-    id: 'step-5',
-    title: 'Performance Metrics',
-    description: 'Evaluate model performance and generate plots',
-    status: 'pending'
-  }
-];
+// Steps will be loaded dynamically from the notebook
+const initialSteps: PipelineStep[] = [];
 
 const initialMessages: ChatMessage[] = [
   {
@@ -52,6 +21,7 @@ function App() {
   const [currentStepId, setCurrentStepId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [currentCode, setCurrentCode] = useState<string>(''); // Add state for current cell code
+  const [initialCodes, setInitialCodes] = useState<Record<string, string>>({});
 
   const handleStepClick = (stepId: string) => {
     setCurrentStepId(stepId);
@@ -104,6 +74,47 @@ function App() {
     }, 100);
   };
 
+  // Load steps dynamically from backend (colab.ipynb)
+  useEffect(() => {
+    const fetchSteps = async () => {
+      try {
+        const res = await fetch('/api/notebook/cells');
+        if (!res.ok) throw new Error('Failed to load notebook steps');
+        const data = await res.json();
+        const loadedSteps: PipelineStep[] = (data.steps || []).map((s: any) => ({
+          id: `step-${s.stepNumber}`,
+          title: s.title,
+          description: s.description,
+          status: 'pending',
+          notebookCellIndex: s.index,
+        }));
+        setSteps(loadedSteps);
+        if (loadedSteps.length > 0) {
+          setCurrentStepId(loadedSteps[0].id);
+        }
+
+        // Preload all codes once
+        const codeEntries: [string, string][] = await Promise.all(
+          loadedSteps.map(async (st) => {
+            if (st.notebookCellIndex === undefined) return [st.id, ''];
+            try {
+              const r = await fetch(`/api/notebook/cell/${st.notebookCellIndex}`);
+              if (!r.ok) return [st.id, ''];
+              const j = await r.json();
+              return [st.id, j.source || ''];
+            } catch {
+              return [st.id, ''];
+            }
+          })
+        );
+        setInitialCodes(Object.fromEntries(codeEntries));
+      } catch (e) {
+        console.error('Error loading steps from notebook', e);
+      }
+    };
+    fetchSteps();
+  }, []);
+
   return (
     <div className="h-screen flex bg-gray-50">
       {/* Left Panel - Pipeline Steps */}
@@ -123,6 +134,7 @@ function App() {
           onStepComplete={handleStepComplete}
           onCodeChange={handleCodeChange} // Pass the code change handler
           onSendErrorToChat={handleSendErrorToChat} // Pass the error sender handler
+          initialCodes={initialCodes}
         />
       </div>
 

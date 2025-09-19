@@ -59,7 +59,7 @@ print("Kernel initialized successfully!")
             raise
     
     def _execute_code_sync(self, code: str) -> Dict[str, Any]:
-        """Execute code synchronously and collect outputs"""
+        """Execute code synchronously and collect outputs until idle or timeout"""
         with self._lock:
             try:
                 # Clear any pending messages
@@ -75,6 +75,9 @@ import matplotlib.pyplot as plt
 import io
 import base64
 from IPython.display import display, HTML
+import builtins
+import os as _os
+import sys as _sys
 
 def custom_show():
     # Get the current matplotlib figure
@@ -95,6 +98,24 @@ def custom_show():
 
 # Replace the default plt.show with our custom implementation
 plt.show = custom_show
+
+# Block process termination commands that would kill the kernel and hang the app
+def _blocked_os_exit(code=0):
+    print("os._exit is blocked in this app. Use the Restart Kernel action instead.")
+    raise RuntimeError("os._exit is blocked")
+
+def _blocked_sys_exit(code=0):
+    print("sys.exit is blocked in this app. Use the Restart Kernel action instead.")
+    raise RuntimeError("sys.exit is blocked")
+
+def _blocked_quit(*args, **kwargs):
+    print("exit()/quit() are blocked in this app. Use the Restart Kernel action instead.")
+    raise RuntimeError("quit() is blocked")
+
+_os._exit = _blocked_os_exit
+_sys.exit = _blocked_sys_exit
+builtins.exit = _blocked_quit
+builtins.quit = _blocked_quit
 """
                 # Execute the override setup
                 override_msg_id = self.kc.execute(setup_show_override)
@@ -110,59 +131,89 @@ plt.show = custom_show
                 
                 # Execute the actual code
                 msg_id = self.kc.execute(code)
-                
-                outputs = []
+
+                outputs: List[Dict[str, Any]] = []
                 status = "ok"
-                
-                # Collect all output messages
+
+                # Collect all output messages until 'idle' or overall timeout
+                overall_timeout_seconds = 300  # 5 minutes per cell
+                start_time = time.time()
+
                 while True:
                     try:
-                        msg = self.kc.get_iopub_msg(timeout=10)
-                        
+                        msg = self.kc.get_iopub_msg(timeout=1)
+
+                        # Skip unrelated messages
                         if msg['parent_header'].get('msg_id') != msg_id:
+                            # Still check for overall timeout
+                            if time.time() - start_time > overall_timeout_seconds:
+                                status = "timeout"
+                                outputs.append({
+                                    'type': 'error',
+                                    'ename': 'TimeoutError',
+                                    'evalue': f'Cell execution exceeded {overall_timeout_seconds}s',
+                                    'traceback': []
+                                })
+                                break
                             continue
-                            
+
                         msg_type = msg['msg_type']
                         content = msg['content']
-                        
+
                         if msg_type == 'stream':
                             outputs.append({
                                 'type': 'stream',
-                                'name': content['name'],
-                                'content': content['text']
+                                'name': content.get('name'),
+                                'content': content.get('text', '')
                             })
-                        
+
                         elif msg_type == 'execute_result':
-                            # Handle execution results
-                            data = content['data']
+                            data = content.get('data', {})
                             output = self._process_display_data(data)
                             if output:
                                 outputs.append(output)
-                        
+
                         elif msg_type == 'display_data':
-                            # Handle display data (plots, etc.)
-                            data = content['data']
+                            data = content.get('data', {})
                             output = self._process_display_data(data)
                             if output:
                                 outputs.append(output)
-                        
+
                         elif msg_type == 'error':
-                            # Handle errors
                             outputs.append({
                                 'type': 'error',
-                                'ename': content['ename'],
-                                'evalue': content['evalue'],
-                                'traceback': content['traceback']
+                                'ename': content.get('ename', 'Error'),
+                                'evalue': content.get('evalue', ''),
+                                'traceback': content.get('traceback', [])
                             })
                             status = "error"
-                        
-                        elif msg_type == 'status' and content['execution_state'] == 'idle':
-                            # Execution finished
+
+                        elif msg_type == 'status' and content.get('execution_state') == 'idle':
+                            # Execution finished successfully or with errors already captured
                             break
-                            
+
+                        # Check overall timeout after processing each message
+                        if time.time() - start_time > overall_timeout_seconds:
+                            status = "timeout"
+                            outputs.append({
+                                'type': 'error',
+                                'ename': 'TimeoutError',
+                                'evalue': f'Cell execution exceeded {overall_timeout_seconds}s',
+                                'traceback': []
+                            })
+                            break
+
                     except queue.Empty:
-                        logger.warning("Timeout waiting for kernel output")
-                        break
+                        # No message this tick; check overall timeout
+                        if time.time() - start_time > overall_timeout_seconds:
+                            status = "timeout"
+                            outputs.append({
+                                'type': 'error',
+                                'ename': 'TimeoutError',
+                                'evalue': f'Cell execution exceeded {overall_timeout_seconds}s',
+                                'traceback': []
+                            })
+                            break
                 
                 return {
                     'outputs': outputs,
@@ -219,6 +270,8 @@ plt.show = custom_show
             tracked_code = code
         
         return self._execute_code_sync(tracked_code)
+
+    # Streaming executor removed per user request
     
     def restart_kernel(self) -> Dict[str, str]:
         """Restart the kernel"""

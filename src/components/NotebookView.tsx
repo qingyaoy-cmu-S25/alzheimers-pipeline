@@ -207,9 +207,10 @@ interface NotebookViewProps {
   onStepComplete?: (stepId: string, success: boolean) => void;
   onCodeChange?: (code: string) => void; // Add prop for code change callback
   onSendErrorToChat?: (errorMessage: string) => void; // Add prop for sending errors to chat
+  initialCodes?: Record<string, string>;
 }
 
-export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange, onSendErrorToChat }) => {
+export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange, onSendErrorToChat, initialCodes }) => {
   const [cellStates, setCellStates] = useState<Record<string, {
     executed: boolean;
     executing: boolean;
@@ -218,6 +219,7 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
   }>>({});
 
   const [editableCode, setEditableCode] = useState<Record<string, string>>({});
+  // Terminal streaming removed; keep simple aggregated output
 
   // Get current step's cell state
   const getCurrentCellState = () => {
@@ -230,7 +232,7 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
   // Get current step's code (either edited or template)
   const getCurrentCode = () => {
     if (!currentStep) return '';
-    return editableCode[currentStep.id] || stepCodeTemplates[currentStep.id] || '';
+    return editableCode[currentStep.id] || '';
   };
 
   // Check if current code has been edited
@@ -289,7 +291,9 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
         },
         body: JSON.stringify({
           code: code,
-          cell_id: parseInt(targetStepId.split('-')[1])
+          cell_id: (currentStep && currentStep.notebookCellIndex !== undefined)
+            ? currentStep.notebookCellIndex
+            : parseInt(targetStepId.split('-')[1])
         })
       });
 
@@ -351,10 +355,23 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
     }
   };
 
+
   const runCurrentStep = async () => {
     if (!currentStep) return;
     await executeCode(currentStep.id);
   };
+
+  // Initialize code from preloaded initialCodes when step changes
+  useEffect(() => {
+    if (!currentStep) return;
+    if (!initialCodes) return;
+    const preloaded = initialCodes[currentStep.id];
+    if (preloaded === undefined) return;
+    setEditableCode(prev => ({
+      ...prev,
+      [currentStep.id]: preloaded
+    }));
+  }, [currentStep, initialCodes]);
 
   const handleCodeChange = (newCode: string) => {
     if (!currentStep) return;
@@ -444,6 +461,9 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
         );
     }
   };
+
+  // Build aggregated console text from outputs
+  // Terminal view removed
 
   if (!currentStep) {
     return (
@@ -552,16 +572,16 @@ Examples:
           </div>
 
           {/* Output Area */}
-          {currentCellState.outputs.length > 0 && (
-            <div className="border-t border-gray-200 p-4 bg-gray-50">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-600">Output:</span>
-                {currentCellState.executionTime !== undefined && (
-                  <span className="text-xs text-gray-500">
-                    Execution time: {currentCellState.executionTime.toFixed(2)} seconds
-                  </span>
-                )}
-              </div>
+          <div className="border-t border-gray-200 p-4 bg-gray-50">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-600">Output:</span>
+              {currentCellState.executionTime !== undefined && (
+                <span className="text-xs text-gray-500">
+                  Execution time: {currentCellState.executionTime.toFixed(2)} seconds
+                </span>
+              )}
+            </div>
+            {currentCellState.outputs.length > 0 && (
               <div className="space-y-3">
                 {currentCellState.outputs.map((output, index) => (
                   <div key={index}>
@@ -569,8 +589,8 @@ Examples:
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>
