@@ -284,7 +284,8 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
     }));
 
     try {
-      const response = await fetch('/api/execute', {
+      const API_BASE = import.meta.env.VITE_API_BASE || '';
+      const response = await fetch(`${API_BASE}/api/execute`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
