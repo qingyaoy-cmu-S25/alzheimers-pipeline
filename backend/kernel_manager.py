@@ -99,23 +99,26 @@ def custom_show():
 # Replace the default plt.show with our custom implementation
 plt.show = custom_show
 
-# Block process termination commands that would kill the kernel and hang the app
-def _blocked_os_exit(code=0):
-    print("os._exit is blocked in this app. Use the Restart Kernel action instead.")
-    raise RuntimeError("os._exit is blocked")
+# Handle process termination commands intelligently
+class KernelRestartRequest(Exception):
+    pass
 
-def _blocked_sys_exit(code=0):
-    print("sys.exit is blocked in this app. Use the Restart Kernel action instead.")
-    raise RuntimeError("sys.exit is blocked")
+def _handle_os_exit(code=0):
+    print("Kernel restart requested by os._exit(). The kernel will be restarted.")
+    raise KernelRestartRequest("os._exit called")
 
-def _blocked_quit(*args, **kwargs):
-    print("exit()/quit() are blocked in this app. Use the Restart Kernel action instead.")
-    raise RuntimeError("quit() is blocked")
+def _handle_sys_exit(code=0):
+    print("Kernel restart requested by sys.exit(). The kernel will be restarted.")
+    raise KernelRestartRequest("sys.exit called")
 
-_os._exit = _blocked_os_exit
-_sys.exit = _blocked_sys_exit
-builtins.exit = _blocked_quit
-builtins.quit = _blocked_quit
+def _handle_quit(*args, **kwargs):
+    print("Kernel restart requested by exit()/quit(). The kernel will be restarted.")
+    raise KernelRestartRequest("quit/exit called")
+
+_os._exit = _handle_os_exit
+_sys.exit = _handle_sys_exit
+builtins.exit = _handle_quit
+builtins.quit = _handle_quit
 """
                 # Execute the override setup
                 override_msg_id = self.kc.execute(setup_show_override)
@@ -180,13 +183,25 @@ builtins.quit = _blocked_quit
                                 outputs.append(output)
 
                         elif msg_type == 'error':
-                            outputs.append({
-                                'type': 'error',
-                                'ename': content.get('ename', 'Error'),
-                                'evalue': content.get('evalue', ''),
-                                'traceback': content.get('traceback', [])
-                            })
-                            status = "error"
+                            error_name = content.get('ename', 'Error')
+
+                            # Check if this is a kernel restart request
+                            if error_name == 'KernelRestartRequest':
+                                # Mark that kernel restart is needed
+                                status = "restart_needed"
+                                outputs.append({
+                                    'type': 'stream',
+                                    'name': 'stdout',
+                                    'content': 'Kernel restart requested. The kernel will be restarted after this cell completes.\n'
+                                })
+                            else:
+                                outputs.append({
+                                    'type': 'error',
+                                    'ename': error_name,
+                                    'evalue': content.get('evalue', ''),
+                                    'traceback': content.get('traceback', [])
+                                })
+                                status = "error"
 
                         elif msg_type == 'status' and content.get('execution_state') == 'idle':
                             # Execution finished successfully or with errors already captured
@@ -262,14 +277,36 @@ builtins.quit = _blocked_quit
     def execute_code(self, code: str, cell_id: int = None) -> Dict[str, Any]:
         """Execute code and return results"""
         logger.info(f"Executing code for cell {cell_id}")
-        
+
         # Add cell tracking comment
         if cell_id:
             tracked_code = f"# Cell {cell_id}\n{code}"
         else:
             tracked_code = code
-        
-        return self._execute_code_sync(tracked_code)
+
+        result = self._execute_code_sync(tracked_code)
+
+        # Check if kernel restart was requested
+        if result.get('status') == 'restart_needed':
+            logger.info("Kernel restart requested via exit command. Restarting kernel...")
+
+            # Restart the kernel
+            self.restart_kernel()
+
+            # Update the result to indicate successful restart
+            result['outputs'].append({
+                'type': 'stream',
+                'name': 'stdout',
+                'content': '\n✓ Kernel has been restarted successfully.\n'
+            })
+            result['outputs'].append({
+                'type': 'stream',
+                'name': 'stdout',
+                'content': 'Note: Previous variables and imports have been cleared. You may need to re-run previous cells.\n'
+            })
+            result['status'] = 'ok'  # Mark as ok since restart was intentional
+
+        return result
 
     # Streaming executor removed per user request
     
