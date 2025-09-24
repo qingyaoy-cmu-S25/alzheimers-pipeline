@@ -306,6 +306,11 @@ builtins.quit = _handle_quit
             })
             result['status'] = 'ok'  # Mark as ok since restart was intentional
 
+        # Log the response size and status before returning
+        import json
+        response_size = len(json.dumps(result))
+        logger.info(f"Returning response for cell {cell_id}: status={result['status']}, size={response_size} bytes, outputs={len(result.get('outputs', []))} items")
+
         return result
 
     # Streaming executor removed per user request

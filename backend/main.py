@@ -106,11 +106,17 @@ async def chat_stream(request: ChatRequest):
 @app.post("/api/execute")
 async def execute_code(request: ExecuteRequest):
     """Execute Python code using Jupyter kernel"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     try:
+        logger.info(f"Received execute request for cell {request.cell_id}")
         km = get_kernel_manager()
         result = km.execute_code(request.code, request.cell_id)
+        logger.info(f"Execution completed, sending response back")
         return result
     except Exception as e:
+        logger.error(f"Execution error: {e}")
         return {
             "outputs": [{
                 "type": "error",
