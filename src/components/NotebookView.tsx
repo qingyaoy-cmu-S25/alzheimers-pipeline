@@ -373,10 +373,18 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
     if (!initialCodes) return;
     const preloaded = initialCodes[currentStep.id];
     if (preloaded === undefined) return;
-    setEditableCode(prev => ({
-      ...prev,
-      [currentStep.id]: preloaded
-    }));
+
+    // Only set the code if it hasn't been edited yet
+    setEditableCode(prev => {
+      // If this step already has edited code, don't overwrite it
+      if (prev[currentStep.id] !== undefined) {
+        return prev;
+      }
+      return {
+        ...prev,
+        [currentStep.id]: preloaded
+      };
+    });
   }, [currentStep, initialCodes]);
 
   const handleCodeChange = (newCode: string) => {
