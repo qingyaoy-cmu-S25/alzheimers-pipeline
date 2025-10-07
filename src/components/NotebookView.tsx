@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CellOutput, PipelineStep } from '../types';
+import { RotateCcw, AlertCircle } from 'lucide-react';
 
 // Define code templates corresponding to each pipeline step
 const stepCodeTemplates: Record<string, string> = {
@@ -221,6 +222,10 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
   const [editableCode, setEditableCode] = useState<Record<string, string>>({});
   // Terminal streaming removed; keep simple aggregated output
 
+  // Kernel restart states
+  const [isRestartingKernel, setIsRestartingKernel] = useState(false);
+  const [showRestartConfirmation, setShowRestartConfirmation] = useState(false);
+
   // Get current step's cell state
   const getCurrentCellState = () => {
     if (!currentStep) return { executed: false, executing: false, outputs: [] };
@@ -380,7 +385,7 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
       ...prev,
       [currentStep.id]: newCode
     }));
-    
+
     // Reset execution state and time when code is modified
     setCellStates(prev => ({
       ...prev,
@@ -391,6 +396,71 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
         executionTime: undefined // Reset execution time
       }
     }));
+  };
+
+  // Handle kernel restart
+  const handleRestartKernel = async () => {
+    setShowRestartConfirmation(false);
+    setIsRestartingKernel(true);
+
+    try {
+      const API_BASE = import.meta.env.VITE_API_BASE || '';
+      const response = await fetch(`${API_BASE}/api/restart_kernel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.status === 'restarted') {
+          // Clear all cell states after kernel restart
+          setCellStates({});
+
+          // Show success message in the current step's output
+          if (currentStep) {
+            setCellStates(prev => ({
+              ...prev,
+              [currentStep.id]: {
+                executed: false,
+                executing: false,
+                outputs: [{
+                  type: 'stream',
+                  content: '✓ Kernel restarted successfully.\n\nAll variables and imports have been cleared.\nYou may need to re-run previous cells.',
+                  name: 'stdout'
+                }],
+                executionTime: undefined
+              }
+            }));
+          }
+        }
+      } else {
+        throw new Error('Failed to restart kernel');
+      }
+    } catch (error) {
+      console.error('Error restarting kernel:', error);
+      // Show error message
+      if (currentStep) {
+        setCellStates(prev => ({
+          ...prev,
+          [currentStep.id]: {
+            executed: false,
+            executing: false,
+            outputs: [{
+              type: 'error',
+              content: `Failed to restart kernel: ${error instanceof Error ? error.message : String(error)}`,
+              ename: 'KernelRestartError',
+              evalue: error instanceof Error ? error.message : String(error),
+              traceback: []
+            }],
+            executionTime: undefined
+          }
+        }));
+      }
+    } finally {
+      setIsRestartingKernel(false);
+    }
   };
 
   const renderOutput = (output: CellOutput) => {
@@ -482,6 +552,43 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
 
   return (
     <div className="h-full overflow-y-auto bg-gray-50 p-2">
+      {/* Restart Kernel Confirmation Dialog */}
+      {showRestartConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl">
+            <div className="flex items-start space-x-3 mb-4">
+              <AlertCircle className="w-6 h-6 text-yellow-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Restart Kernel?
+                </h3>
+                <p className="text-sm text-gray-600">
+                  This will restart the Python kernel and clear all variables, imports, and state.
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  You will need to re-run any cells to restore the previous state.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => setShowRestartConfirmation(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRestartKernel}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors"
+              >
+                Restart Kernel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         {/* Cell for current step */}
         <div className="bg-white rounded-lg mb-4 overflow-hidden shadow-sm">
@@ -507,31 +614,52 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
                 </span>
               )}
             </div>
-            
-            <button
-              onClick={runCurrentStep}
-              disabled={currentCellState.executing}
-              className={`
-                flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium
-                transition-colors duration-200
-                ${(currentCellState.executing) ? 
-                  'bg-blue-100 text-blue-700 cursor-not-allowed' :
-                  'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
-                }
-              `}
-            >
-              {(currentCellState.executing) ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <span>Running...</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-4 h-4">▶</div>
-                  <span>Run Code</span>
-                </>
-              )}
-            </button>
+
+            <div className="flex items-center space-x-2">
+              {/* Restart Kernel Button */}
+              <button
+                onClick={() => setShowRestartConfirmation(true)}
+                disabled={isRestartingKernel}
+                className={`
+                  flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium
+                  transition-colors duration-200
+                  ${isRestartingKernel ?
+                    'bg-gray-100 text-gray-500 cursor-not-allowed' :
+                    'bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300'
+                  }
+                `}
+                title="Restart Kernel"
+              >
+                <RotateCcw className={`w-4 h-4 ${isRestartingKernel ? 'animate-spin' : ''}`} />
+                <span>Restart</span>
+              </button>
+
+              {/* Run Code Button */}
+              <button
+                onClick={runCurrentStep}
+                disabled={currentCellState.executing || isRestartingKernel}
+                className={`
+                  flex items-center space-x-2 px-4 py-2 rounded-md text-sm font-medium
+                  transition-colors duration-200
+                  ${(currentCellState.executing || isRestartingKernel) ?
+                    'bg-blue-100 text-blue-700 cursor-not-allowed' :
+                    'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
+                  }
+                `}
+              >
+                {(currentCellState.executing) ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Running...</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-4 h-4">▶</div>
+                    <span>Run Code</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Code Content */}
