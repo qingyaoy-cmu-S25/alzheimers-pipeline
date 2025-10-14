@@ -288,23 +288,32 @@ builtins.quit = _handle_quit
 
         # Check if kernel restart was requested
         if result.get('status') == 'restart_needed':
-            logger.info("Kernel restart requested via exit command. Restarting kernel...")
+            logger.info("Kernel restart requested via exit command. Preparing restart response...")
 
-            # Restart the kernel
-            self.restart_kernel()
-
-            # Update the result to indicate successful restart
-            result['outputs'].append({
+            # Prepare a quick response first, then restart in background
+            result['outputs'] = [{
                 'type': 'stream',
                 'name': 'stdout',
-                'content': '\n✓ Kernel has been restarted successfully.\n'
-            })
-            result['outputs'].append({
-                'type': 'stream',
-                'name': 'stdout',
-                'content': 'Note: Previous variables and imports have been cleared. You may need to re-run previous cells.\n'
-            })
-            result['status'] = 'ok'  # Mark as ok since restart was intentional
+                'content': '🔄 Kernel restart requested by code.\n\n⏳ Restarting kernel in background...\n'
+            }]
+            result['status'] = 'ok'  # Mark as ok immediately
+
+            # Log that we're about to restart
+            logger.info("Sending quick response to frontend, then restarting kernel...")
+
+            # Schedule kernel restart for after response is sent
+            import threading
+            def delayed_restart():
+                try:
+                    logger.info("Starting delayed kernel restart...")
+                    self.restart_kernel()
+                    logger.info("Delayed kernel restart completed")
+                except Exception as e:
+                    logger.error(f"Error in delayed restart: {e}")
+
+            restart_thread = threading.Thread(target=delayed_restart)
+            restart_thread.daemon = True
+            restart_thread.start()
 
         # Log the response size and status before returning
         import json
