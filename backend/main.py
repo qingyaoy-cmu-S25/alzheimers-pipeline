@@ -241,4 +241,11 @@ async def get_notebook_cell(index: int, path: Optional[str] = None):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Increase timeout for long-running code execution in low-memory environments
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        timeout_keep_alive=300,  # 5 minutes keep-alive timeout
+        workers=1  # Use single worker to save memory
+    )
