@@ -139,7 +139,7 @@ builtins.quit = _handle_quit
                 status = "ok"
 
                 # Collect all output messages until 'idle' or overall timeout
-                overall_timeout_seconds = 300  # 5 minutes per cell
+                overall_timeout_seconds = 900  # 15 minutes per cell (increased for large datasets)
                 start_time = time.time()
 
                 while True:
