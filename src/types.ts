@@ -35,3 +35,27 @@ export interface StepResult {
   hasChart?: boolean;
   chartData?: any;
 }
+
+// Figma design workflow types
+export type WorkflowStep = 
+  | 'environment' 
+  | 'import' 
+  | 'qc' 
+  | 'visualization' 
+  | 'modeling' 
+  | 'export';
+
+export type StepStatus = 'pending' | 'running' | 'success' | 'error';
+
+export interface WorkflowState {
+  [key: string]: StepStatus;
+}
+
+export interface OutputItem {
+  id: string;
+  type: 'chart' | 'table' | 'log' | 'error' | 'recommendations';
+  title: string;
+  content: any;
+  timestamp: Date;
+  addedToReport: boolean;
+}
