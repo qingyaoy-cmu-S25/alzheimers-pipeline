@@ -5,6 +5,7 @@ import os
 
 # Get API key from environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+print(f"OPENAI_API_KEY: {OPENAI_API_KEY}")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
