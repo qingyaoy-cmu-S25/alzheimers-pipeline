@@ -54,18 +54,66 @@ export function FileUploader({
     return true;
   };
 
+  const parseCSV = (text: string) => {
+    // 处理不同的换行符
+    console.log('text', text);
+    
+    const normalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalizedText.split('\n').filter(line => line.trim());
+    console.log('after split lines:', lines);
+    console.log('lines', lines);
+    
+    const separator = ',';  // 使用固定的逗号分隔符
+
+    const formatNumber = (value: string) => {
+      // 检查是否为数字
+      const trimmed = value.trim();
+      if (!trimmed) return '';
+      
+      const num = parseFloat(trimmed);
+      if (isNaN(num)) return trimmed;
+      
+      // 根据数值大小选择合适的格式化方式
+      if (Math.abs(num) < 0.001) {
+        return num.toExponential(4);  // 非常小的数使用科学计数法
+      } else if (Math.abs(num) > 1000) {
+        return num.toLocaleString('en-US', { maximumFractionDigits: 2 }); // 大数使用千分位
+      } else if (num === Math.floor(num)) {
+        return num.toString(); // 整数
+      } else {
+        return num.toFixed(6); // 保持6位小数
+      }
+    };
+
+    const parseRow = (row: string, isHeader: boolean) => {
+      if (!row) return [];
+      
+      const cells = row.split(separator).map(cell => cell.trim());
+      console.log('cells before format:', cells);
+      
+      // 如果是数据行（非表头），格式化数字
+      if (!isHeader) {
+        return cells.map(cell => {
+          if (!cell) return '';
+          return formatNumber(cell);
+        });
+      }
+      
+      return cells;
+    };
+
+    const headers = parseRow(lines[0], true);
+    const rows = lines.slice(1, 6).map(line => parseRow(line, false));
+
+    return { headers, rows };
+  };
+
   const handleFileRead = async (file: File) => {
     try {
       const text = await file.text();
-      const lines = text.split('\\n');
-      const headers = lines[0].split(',');
-      const previewRows = lines.slice(1, 6).map(line => line.split(','));
       
-      setPreview({
-        headers,
-        rows: previewRows
-      });
-      
+      const parsedData = parseCSV(text);
+      setPreview(parsedData);
       onFileUpload(file);
       setError(null);
     } catch (err) {
@@ -139,24 +187,31 @@ export function FileUploader({
             </div>
           </div>
           <ScrollArea className="h-[300px]">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {preview.headers.map((header, i) => (
-                    <TableHead key={i}>{header}</TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {preview.rows.map((row, i) => (
-                  <TableRow key={i}>
-                    {row.map((cell, j) => (
-                      <TableCell key={j}>{cell}</TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {preview.headers.map((header, i) => (
+                      <TableHead key={i} className="whitespace-nowrap min-w-[150px] font-mono">{header}</TableHead>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {preview.rows.map((row, i) => (
+                    <TableRow key={i}>
+                      {row.map((cell, j) => (
+                        <TableCell 
+                          key={j} 
+                        //   className={`whitespace-nowrap font-mono ${j === 0 ? 'text-left' : 'text-right'}`}
+                        >
+                          {cell}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </ScrollArea>
         </div>
       )}
