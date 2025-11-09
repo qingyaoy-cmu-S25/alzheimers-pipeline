@@ -39,83 +39,83 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [code, setCode] = useState<string>('');
   const [outputs, setOutputs] = useState<OutputItem[]>([]);
-  const [notebookSteps, setNotebookSteps] = useState<PipelineStep[]>([]);
-  const [codeMap, setCodeMap] = useState<Record<string, string>>({});
+  // const [notebookSteps, setNotebookSteps] = useState<PipelineStep[]>([]);
+  // const [codeMap, setCodeMap] = useState<Record<string, string>>({});
   const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-  // Load notebook cells and map them to workflow steps
-  useEffect(() => {
-    const fetchNotebookSteps = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/api/notebook/cells`);
-        if (!res.ok) throw new Error('Failed to load notebook steps');
-        const data = await res.json();
-        const loadedSteps: PipelineStep[] = (data.steps || []).map((s: any) => ({
-          id: `step-${s.stepNumber}`,
-          title: s.title,
-          description: s.description,
-          status: 'pending' as const,
-          notebookCellIndex: s.index,
-        }));
-        setNotebookSteps(loadedSteps);
+  // // Load notebook cells and map them to workflow steps
+  // useEffect(() => {
+  //   // const fetchNotebookSteps = async () => {
+  //   //   try {
+  //   //     const res = await fetch(`${API_BASE}/api/notebook/cells`);
+  //   //     if (!res.ok) throw new Error('Failed to load notebook steps');
+  //   //     const data = await res.json();
+  //   //     const loadedSteps: PipelineStep[] = (data.steps || []).map((s: any) => ({
+  //   //       id: `step-${s.stepNumber}`,
+  //   //       title: s.title,
+  //   //       description: s.description,
+  //   //       status: 'pending' as const,
+  //   //       notebookCellIndex: s.index,
+  //   //     }));
+  //   //     setNotebookSteps(loadedSteps);
 
-        // Map workflow steps to notebook cells based on title/description matching
-        const mapping: Record<WorkflowStep, number | null> = { ...workflowStepMapping };
+  //   //     // Map workflow steps to notebook cells based on title/description matching
+  //   //     const mapping: Record<WorkflowStep, number | null> = { ...workflowStepMapping };
         
-        loadedSteps.forEach((step) => {
-          const title = step.title.toLowerCase();
-          const desc = step.description.toLowerCase();
+  //   //     loadedSteps.forEach((step) => {
+  //   //       const title = step.title.toLowerCase();
+  //   //       const desc = step.description.toLowerCase();
           
-          // Smart mapping based on keywords
-          if ((title.includes('environment') || title.includes('check') || desc.includes('gpu') || desc.includes('memory')) && !mapping.environment) {
-            mapping.environment = step.notebookCellIndex || null;
-          } else if ((title.includes('import') || title.includes('load') || title.includes('data') || desc.includes('csv') || desc.includes('h5ad')) && !mapping.import) {
-            mapping.import = step.notebookCellIndex || null;
-          } else if ((title.includes('qc') || title.includes('quality') || title.includes('control')) && !mapping.qc) {
-            mapping.qc = step.notebookCellIndex || null;
-          } else if ((title.includes('visual') || title.includes('plot') || title.includes('chart') || desc.includes('umap')) && !mapping.visualization) {
-            mapping.visualization = step.notebookCellIndex || null;
-          } else if ((title.includes('model') || title.includes('train') || desc.includes('gnn') || desc.includes('neural')) && !mapping.modeling) {
-            mapping.modeling = step.notebookCellIndex || null;
-          } else if ((title.includes('export') || title.includes('save') || title.includes('download')) && !mapping.export) {
-            mapping.export = step.notebookCellIndex || null;
-          }
-        });
+  //   //       // Smart mapping based on keywords
+  //   //       if ((title.includes('environment') || title.includes('check') || desc.includes('gpu') || desc.includes('memory')) && !mapping.environment) {
+  //   //         mapping.environment = step.notebookCellIndex || null;
+  //   //       } else if ((title.includes('import') || title.includes('load') || title.includes('data') || desc.includes('csv') || desc.includes('h5ad')) && !mapping.import) {
+  //   //         mapping.import = step.notebookCellIndex || null;
+  //   //       } else if ((title.includes('qc') || title.includes('quality') || title.includes('control')) && !mapping.qc) {
+  //   //         mapping.qc = step.notebookCellIndex || null;
+  //   //       } else if ((title.includes('visual') || title.includes('plot') || title.includes('chart') || desc.includes('umap')) && !mapping.visualization) {
+  //   //         mapping.visualization = step.notebookCellIndex || null;
+  //   //       } else if ((title.includes('model') || title.includes('train') || desc.includes('gnn') || desc.includes('neural')) && !mapping.modeling) {
+  //   //         mapping.modeling = step.notebookCellIndex || null;
+  //   //       } else if ((title.includes('export') || title.includes('save') || title.includes('download')) && !mapping.export) {
+  //   //         mapping.export = step.notebookCellIndex || null;
+  //   //       }
+  //   //     });
 
-        // Preload all codes
-        const codeEntries: [string, string][] = await Promise.all(
-          Object.entries(mapping).map(async ([workflowStep, cellIndex]) => {
-            if (cellIndex === null) return [workflowStep, ''];
-            try {
-              const r = await fetch(`${API_BASE}/api/notebook/cell/${cellIndex}`);
-              if (!r.ok) return [workflowStep, ''];
-              const j = await r.json();
-              return [workflowStep, j.source || ''];
-            } catch {
-              return [workflowStep, ''];
-            }
-          })
-        );
-        const codes = Object.fromEntries(codeEntries);
-        setCodeMap(codes);
+  //   //     // Preload all codes
+  //   //     const codeEntries: [string, string][] = await Promise.all(
+  //   //       Object.entries(mapping).map(async ([workflowStep, cellIndex]) => {
+  //   //         if (cellIndex === null) return [workflowStep, ''];
+  //   //         try {
+  //   //           const r = await fetch(`${API_BASE}/api/notebook/cell/${cellIndex}`);
+  //   //           if (!r.ok) return [workflowStep, ''];
+  //   //           const j = await r.json();
+  //   //           return [workflowStep, j.source || ''];
+  //   //         } catch {
+  //   //           return [workflowStep, ''];
+  //   //         }
+  //   //       })
+  //   //     );
+  //   //     const codes = Object.fromEntries(codeEntries);
+  //   //     setCodeMap(codes);
         
-        // Set initial code for current step
-        if (codes[currentStep]) {
-          setCode(codes[currentStep]);
-        }
-      } catch (e) {
-        console.error('Error loading steps from notebook', e);
-      }
-    };
-    fetchNotebookSteps();
-  }, []);
+  //   //     // Set initial code for current step
+  //   //     if (codes[currentStep]) {
+  //   //       setCode(codes[currentStep]);
+  //   //     }
+  //   //   } catch (e) {
+  //   //     console.error('Error loading steps from notebook', e);
+  //   //   }
+  //   // };
+  //   // fetchNotebookSteps();
+  // }, []);
 
   // Update code when workflow step changes
-  useEffect(() => {
-    if (codeMap[currentStep]) {
-      setCode(codeMap[currentStep]);
-    }
-  }, [currentStep, codeMap]);
+  // useEffect(() => {
+  //   if (codeMap[currentStep]) {
+  //     setCode(codeMap[currentStep]);
+  //   }
+  // }, [currentStep, codeMap]);
 
   const updateStepStatus = (step: WorkflowStep, status: StepStatus) => {
     setWorkflowState(prev => ({
@@ -168,39 +168,34 @@ function App() {
   };
 
   // Get the notebook cell index for current workflow step
-  const getCurrentNotebookCellIndex = (): number | null => {
-    // Find the mapping for current step
-    const step = notebookSteps.find(s => {
-      const title = s.title.toLowerCase();
-      const desc = s.description.toLowerCase();
-      const current = currentStep.toLowerCase();
+  // const getCurrentNotebookCellIndex = (): number | null => {
+  //   // Find the mapping for current step
+  //   const step = notebookSteps.find(s => {
+  //     const title = s.title.toLowerCase();
+  //     const desc = s.description.toLowerCase();
+  //     const current = currentStep.toLowerCase();
       
-      if (current === 'environment') {
-        return title.includes('environment') || title.includes('check') || desc.includes('gpu') || desc.includes('memory');
-      } else if (current === 'import') {
-        return title.includes('import') || title.includes('load') || title.includes('data') || desc.includes('csv') || desc.includes('h5ad');
-      } else if (current === 'qc') {
-        return title.includes('qc') || title.includes('quality') || title.includes('control');
-      } else if (current === 'visualization') {
-        return title.includes('visual') || title.includes('plot') || title.includes('chart') || desc.includes('umap');
-      } else if (current === 'modeling') {
-        return title.includes('model') || title.includes('train') || desc.includes('gnn') || desc.includes('neural');
-      } else if (current === 'export') {
-        return title.includes('export') || title.includes('save') || title.includes('download');
-      }
-      return false;
-    });
+  //     if (current === 'environment') {
+  //       return title.includes('environment') || title.includes('check') || desc.includes('gpu') || desc.includes('memory');
+  //     } else if (current === 'import') {
+  //       return title.includes('import') || title.includes('load') || title.includes('data') || desc.includes('csv') || desc.includes('h5ad');
+  //     } else if (current === 'qc') {
+  //       return title.includes('qc') || title.includes('quality') || title.includes('control');
+  //     } else if (current === 'visualization') {
+  //       return title.includes('visual') || title.includes('plot') || title.includes('chart') || desc.includes('umap');
+  //     } else if (current === 'modeling') {
+  //       return title.includes('model') || title.includes('train') || desc.includes('gnn') || desc.includes('neural');
+  //     } else if (current === 'export') {
+  //       return title.includes('export') || title.includes('save') || title.includes('download');
+  //     }
+  //     return false;
+  //   });
     
-    return step?.notebookCellIndex ?? null;
-  };
+  //   return step?.notebookCellIndex ?? null;
+  // };
 
   // Convert WorkflowStep to PipelineStep for CodeEditor
   const getCurrentPipelineStep = (): PipelineStep | null => {
-    const cellIndex = getCurrentNotebookCellIndex();
-    if (cellIndex === null) return null;
-    
-    const step = notebookSteps.find(s => s.notebookCellIndex === cellIndex);
-    if (step) return step;
     
     // Create a temporary PipelineStep from workflow step
     const stepLabels: Record<WorkflowStep, { title: string; description: string }> = {
@@ -213,18 +208,20 @@ function App() {
     };
     
     const label = stepLabels[currentStep];
+    
     return {
       id: currentStep,
       title: label.title,
       description: label.description,
       status: workflowState[currentStep] === 'success' ? 'completed' : workflowState[currentStep] === 'error' ? 'error' : workflowState[currentStep] === 'running' ? 'running' : 'pending',
-      notebookCellIndex: cellIndex,
+      // notebookCellIndex: cellIndex,
     };
   };
 
   const handleStepComplete = (stepId: string, success: boolean) => {
     // stepId might be a PipelineStep id or WorkflowStep
     // Check if it matches current workflow step, otherwise try to find matching workflow step
+    return;
     let targetStep: WorkflowStep = currentStep;
     
     // Try to map stepId to workflow step

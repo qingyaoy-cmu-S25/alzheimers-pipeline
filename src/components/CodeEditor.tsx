@@ -7,6 +7,7 @@ import { Play, Settings, Save, Download, Sparkles, RotateCcw } from 'lucide-reac
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
 import { ParameterDrawer } from './ParameterDrawer';
 import { OutputPanel } from './OutputPanel';
+import { FileUploader } from './FileUploader';
 import { toast } from 'sonner';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
 
@@ -79,7 +80,6 @@ export function CodeEditor({
   const [isRestartingKernel, setIsRestartingKernel] = useState(false);
   const [showRestartConfirmation, setShowRestartConfirmation] = useState(false);
   const API_BASE = import.meta.env.VITE_API_BASE || '';
-
   // Notify parent when code changes
   useEffect(() => {
     if (onCodeChange && code) {
@@ -257,17 +257,6 @@ export function CodeEditor({
                 <span className="text-sm font-medium">{currentStep.title}</span>
               </div>
               <div className="flex items-center gap-2">
-                {currentStep.title.toLowerCase().includes('visual') && (
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={generateRecommendations}
-                    className="border-yellow-500/50 text-yellow-600 hover:bg-yellow-500/10"
-                  >
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    AI Recommendations
-                  </Button>
-                )}
                 <Sheet>
                   <SheetTrigger asChild>
                     <Button variant="outline" size="sm">
@@ -302,14 +291,56 @@ export function CodeEditor({
               </div>
             </div>
 
-            {/* Code editor */}
+            {/* Code editor or File uploader */}
             <div className="flex-1 p-4 overflow-auto">
-              <Textarea
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="font-mono text-sm h-full resize-none"
-                placeholder="Enter code here..."
-              />
+              {currentStep.title.toLowerCase().includes('visual') ? (
+                <FileUploader 
+                  onFileUpload={(file) => {
+                    toast.success(`File ${file.name} uploaded successfully`);
+                    // 处理文件上传后的逻辑
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                      try {
+                        const csvContent = e.target?.result as string;
+                        console.log('CSV Content:', csvContent);
+                        // 调用后端API处理数据
+                        // const response = await fetch(`${API_BASE}/api/process_data`, {
+                        //   method: 'POST',
+                        //   headers: {
+                        //     'Content-Type': 'application/json',
+                        //   },
+                        //   body: JSON.stringify({ data: csvContent }),
+                        // });
+                          generateRecommendations();
+                        
+                        // if (response.ok) {
+                        //   const result = await response.json();
+                        //   addOutput({
+                        //     type: 'table',
+                        //     title: 'Data Preview',
+                        //     content: result.preview,
+                        //   });
+                        //   // 触发AI推荐
+                        // } else {
+                        //   throw new Error('Failed to process data');
+                        // }
+                      } catch (error) {
+                        toast.error(`Error processing file: ${error}`);
+                      }
+                    };
+                    reader.readAsText(file);
+                  }}
+                  acceptedFileTypes={['.csv', '.xlsx', '.xls']}
+                  maxFileSize={10 * 1024 * 1024} // 10MB
+                />
+              ) : (
+                <Textarea
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="font-mono text-sm h-full resize-none"
+                  placeholder="Enter code here..."
+                />
+              )}
             </div>
           </div>
         </ResizablePanel>
