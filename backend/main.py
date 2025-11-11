@@ -1,14 +1,20 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import json
 import asyncio
 from typing import List, Optional
 import os
+import shutil
+from datetime import datetime
 from models.openai_chat import get_openai_streaming_response, format_messages
 from kernel_manager import get_kernel_manager
 
 app = FastAPI(title="Alzheimer's Analysis Pipeline API")
+
+# Global state for current notebook
+NOTEBOOKS_DIR = os.path.join(os.path.dirname(__file__), "notebooks")
+CURRENT_NOTEBOOK = "colab.ipynb"  # Default notebook
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -31,6 +37,9 @@ class ChatRequest(BaseModel):
 class ExecuteRequest(BaseModel):
     code: str
     cell_id: Optional[int] = None
+
+class SelectNotebookRequest(BaseModel):
+    filename: str
 
 @app.get("/")
 async def root():
@@ -154,17 +163,16 @@ async def kernel_status():
 # Notebook helper endpoints
 # -----------------------------
 
-def _resolve_notebook_path(path: Optional[str]) -> str:
+def _resolve_notebook_path(path: Optional[str] = None) -> str:
     """Resolve the absolute path to the notebook file.
 
-    Defaults to the project's root-level 'colab.ipynb' if no path provided.
-    This backend typically runs from the 'backend' directory, so we go one level up.
+    Uses the currently selected notebook from NOTEBOOKS_DIR if no path provided.
     """
+    global CURRENT_NOTEBOOK
     if path and path.strip():
         return os.path.abspath(path)
-    backend_dir = os.path.dirname(os.path.abspath(__file__))
-    default_path = os.path.abspath(os.path.join(backend_dir, "..", "colab.ipynb"))
-    return default_path
+    # Use current selected notebook from notebooks directory
+    return os.path.join(NOTEBOOKS_DIR, CURRENT_NOTEBOOK)
 
 
 @app.get("/api/notebook/cells")
@@ -238,6 +246,151 @@ async def get_notebook_cell(index: int, path: Optional[str] = None):
         code = str(source)
 
     return {"index": index, "source": code}
+
+
+# -----------------------------
+# Notebook management endpoints
+# -----------------------------
+
+@app.post("/api/notebooks/upload")
+async def upload_notebook(file: UploadFile = File(...)):
+    """Upload a new Jupyter notebook file"""
+    # Validate file extension
+    if not file.filename.endswith('.ipynb'):
+        raise HTTPException(status_code=400, detail="Only .ipynb files are allowed")
+
+    # Validate file content is valid JSON
+    try:
+        content = await file.read()
+        nb_data = json.loads(content)
+
+        # Validate it's a proper Jupyter notebook
+        if "cells" not in nb_data or "metadata" not in nb_data:
+            raise HTTPException(status_code=400, detail="Invalid Jupyter notebook format")
+
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="File is not valid JSON")
+
+    # Ensure notebooks directory exists
+    os.makedirs(NOTEBOOKS_DIR, exist_ok=True)
+
+    # Save the file
+    file_path = os.path.join(NOTEBOOKS_DIR, file.filename)
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    # Get file info
+    file_stat = os.stat(file_path)
+
+    return {
+        "status": "success",
+        "filename": file.filename,
+        "size": file_stat.st_size,
+        "uploaded_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+    }
+
+
+@app.get("/api/notebooks")
+async def list_notebooks():
+    """List all available notebooks"""
+    if not os.path.exists(NOTEBOOKS_DIR):
+        return {"notebooks": [], "current": CURRENT_NOTEBOOK}
+
+    notebooks = []
+    for filename in os.listdir(NOTEBOOKS_DIR):
+        if filename.endswith('.ipynb'):
+            file_path = os.path.join(NOTEBOOKS_DIR, filename)
+            file_stat = os.stat(file_path)
+            notebooks.append({
+                "filename": filename,
+                "size": file_stat.st_size,
+                "modified_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                "is_current": filename == CURRENT_NOTEBOOK
+            })
+
+    # Sort by modified time, most recent first
+    notebooks.sort(key=lambda x: x["modified_at"], reverse=True)
+
+    return {"notebooks": notebooks, "current": CURRENT_NOTEBOOK}
+
+
+@app.post("/api/notebooks/select")
+async def select_notebook(request: SelectNotebookRequest):
+    """Select a notebook as the current active notebook"""
+    global CURRENT_NOTEBOOK
+
+    filename = request.filename
+    file_path = os.path.join(NOTEBOOKS_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
+
+    CURRENT_NOTEBOOK = filename
+
+    # Load and return basic info about the selected notebook
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            nb_data = json.load(f)
+
+        cell_count = len(nb_data.get("cells", []))
+        code_cell_count = sum(1 for c in nb_data.get("cells", []) if c.get("cell_type") == "code")
+
+        return {
+            "status": "success",
+            "current": CURRENT_NOTEBOOK,
+            "cell_count": cell_count,
+            "code_cell_count": code_cell_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read notebook: {e}")
+
+
+@app.delete("/api/notebooks/{filename}")
+async def delete_notebook(filename: str):
+    """Delete a notebook file"""
+    global CURRENT_NOTEBOOK
+
+    # Prevent deletion of current notebook
+    if filename == CURRENT_NOTEBOOK:
+        raise HTTPException(status_code=400, detail="Cannot delete the currently active notebook")
+
+    file_path = os.path.join(NOTEBOOKS_DIR, filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
+
+    try:
+        os.remove(file_path)
+        return {"status": "success", "message": f"Deleted {filename}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete notebook: {e}")
+
+
+@app.get("/api/notebooks/current")
+async def get_current_notebook():
+    """Get information about the current notebook"""
+    file_path = _resolve_notebook_path()
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Current notebook not found")
+
+    file_stat = os.stat(file_path)
+
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            nb_data = json.load(f)
+
+        cell_count = len(nb_data.get("cells", []))
+        code_cell_count = sum(1 for c in nb_data.get("cells", []) if c.get("cell_type") == "code")
+
+        return {
+            "filename": CURRENT_NOTEBOOK,
+            "size": file_stat.st_size,
+            "modified_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+            "cell_count": cell_count,
+            "code_cell_count": code_cell_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to read notebook: {e}")
+
 
 if __name__ == "__main__":
     import uvicorn
