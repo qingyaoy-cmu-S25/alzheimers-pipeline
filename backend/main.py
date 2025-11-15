@@ -9,12 +9,36 @@ import shutil
 from datetime import datetime
 from models.openai_chat import get_openai_streaming_response, format_messages
 from kernel_manager import get_kernel_manager
+from storage.azure_blob_manager import get_blob_manager
 
 app = FastAPI(title="Alzheimer's Analysis Pipeline API")
 
 # Global state for current notebook
-NOTEBOOKS_DIR = os.path.join(os.path.dirname(__file__), "notebooks")
+NOTEBOOKS_DIR = os.path.join(os.path.dirname(__file__), "notebooks")  # Local cache directory
 CURRENT_NOTEBOOK = "colab.ipynb"  # Default notebook
+
+# Initialize Azure Blob Manager
+try:
+    blob_manager = get_blob_manager()
+    USE_AZURE_STORAGE = True
+    print("✓ Azure Blob Storage initialized successfully")
+
+    # Upload default notebook to Azure if it exists locally but not in Azure
+    default_notebook_path = os.path.join(NOTEBOOKS_DIR, CURRENT_NOTEBOOK)
+    if os.path.exists(default_notebook_path) and not blob_manager.notebook_exists(CURRENT_NOTEBOOK):
+        try:
+            with open(default_notebook_path, "rb") as f:
+                content = f.read()
+            blob_manager.upload_notebook(CURRENT_NOTEBOOK, content)
+            print(f"✓ Uploaded default notebook '{CURRENT_NOTEBOOK}' to Azure Blob Storage")
+        except Exception as upload_error:
+            print(f"⚠ Warning: Could not upload default notebook to Azure: {upload_error}")
+
+except Exception as e:
+    blob_manager = None
+    USE_AZURE_STORAGE = False
+    print(f"✗ Azure Blob Storage not available: {e}")
+    print("  Falling back to local storage")
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -255,63 +279,95 @@ async def get_notebook_cell(index: int, path: Optional[str] = None):
 @app.post("/api/notebooks/upload")
 async def upload_notebook(file: UploadFile = File(...)):
     """Upload a new Jupyter notebook file"""
-    # Validate file extension
-    if not file.filename.endswith('.ipynb'):
-        raise HTTPException(status_code=400, detail="Only .ipynb files are allowed")
-
-    # Validate file content is valid JSON
     try:
         content = await file.read()
-        nb_data = json.loads(content)
 
-        # Validate it's a proper Jupyter notebook
-        if "cells" not in nb_data or "metadata" not in nb_data:
-            raise HTTPException(status_code=400, detail="Invalid Jupyter notebook format")
+        if USE_AZURE_STORAGE:
+            # Upload to Azure Blob Storage
+            result = blob_manager.upload_notebook(file.filename, content)
 
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="File is not valid JSON")
+            # Also save to local cache for Jupyter kernel
+            os.makedirs(NOTEBOOKS_DIR, exist_ok=True)
+            file_path = os.path.join(NOTEBOOKS_DIR, file.filename)
+            with open(file_path, "wb") as f:
+                f.write(content)
 
-    # Ensure notebooks directory exists
-    os.makedirs(NOTEBOOKS_DIR, exist_ok=True)
+            return result
+        else:
+            # Fallback: local storage only
+            # Validate file extension
+            if not file.filename.endswith('.ipynb'):
+                raise HTTPException(status_code=400, detail="Only .ipynb files are allowed")
 
-    # Save the file
-    file_path = os.path.join(NOTEBOOKS_DIR, file.filename)
-    with open(file_path, "wb") as f:
-        f.write(content)
+            # Validate file content is valid JSON
+            try:
+                nb_data = json.loads(content)
+                if "cells" not in nb_data or "metadata" not in nb_data:
+                    raise HTTPException(status_code=400, detail="Invalid Jupyter notebook format")
+            except json.JSONDecodeError:
+                raise HTTPException(status_code=400, detail="File is not valid JSON")
 
-    # Get file info
-    file_stat = os.stat(file_path)
+            # Ensure notebooks directory exists
+            os.makedirs(NOTEBOOKS_DIR, exist_ok=True)
 
-    return {
-        "status": "success",
-        "filename": file.filename,
-        "size": file_stat.st_size,
-        "uploaded_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat()
-    }
+            # Save the file locally
+            file_path = os.path.join(NOTEBOOKS_DIR, file.filename)
+            with open(file_path, "wb") as f:
+                f.write(content)
+
+            # Get file info
+            file_stat = os.stat(file_path)
+
+            return {
+                "status": "success",
+                "filename": file.filename,
+                "size": file_stat.st_size,
+                "uploaded_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat()
+            }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
 @app.get("/api/notebooks")
 async def list_notebooks():
     """List all available notebooks"""
-    if not os.path.exists(NOTEBOOKS_DIR):
-        return {"notebooks": [], "current": CURRENT_NOTEBOOK}
+    try:
+        if USE_AZURE_STORAGE:
+            # Get list from Azure Blob Storage
+            notebooks = blob_manager.list_notebooks()
 
-    notebooks = []
-    for filename in os.listdir(NOTEBOOKS_DIR):
-        if filename.endswith('.ipynb'):
-            file_path = os.path.join(NOTEBOOKS_DIR, filename)
-            file_stat = os.stat(file_path)
-            notebooks.append({
-                "filename": filename,
-                "size": file_stat.st_size,
-                "modified_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
-                "is_current": filename == CURRENT_NOTEBOOK
-            })
+            # Add is_current flag
+            for nb in notebooks:
+                nb["is_current"] = nb["filename"] == CURRENT_NOTEBOOK
 
-    # Sort by modified time, most recent first
-    notebooks.sort(key=lambda x: x["modified_at"], reverse=True)
+            return {"notebooks": notebooks, "current": CURRENT_NOTEBOOK}
+        else:
+            # Fallback: local storage
+            if not os.path.exists(NOTEBOOKS_DIR):
+                return {"notebooks": [], "current": CURRENT_NOTEBOOK}
 
-    return {"notebooks": notebooks, "current": CURRENT_NOTEBOOK}
+            notebooks = []
+            for filename in os.listdir(NOTEBOOKS_DIR):
+                if filename.endswith('.ipynb'):
+                    file_path = os.path.join(NOTEBOOKS_DIR, filename)
+                    file_stat = os.stat(file_path)
+                    notebooks.append({
+                        "filename": filename,
+                        "size": file_stat.st_size,
+                        "modified_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                        "is_current": filename == CURRENT_NOTEBOOK
+                    })
+
+            # Sort by modified time, most recent first
+            notebooks.sort(key=lambda x: x["modified_at"], reverse=True)
+
+            return {"notebooks": notebooks, "current": CURRENT_NOTEBOOK}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list notebooks: {str(e)}")
 
 
 @app.post("/api/notebooks/select")
@@ -320,14 +376,35 @@ async def select_notebook(request: SelectNotebookRequest):
     global CURRENT_NOTEBOOK
 
     filename = request.filename
-    file_path = os.path.join(NOTEBOOKS_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
 
-    CURRENT_NOTEBOOK = filename
-
-    # Load and return basic info about the selected notebook
     try:
+        if USE_AZURE_STORAGE:
+            # Download from Azure Blob Storage to local cache
+            try:
+                content = blob_manager.download_notebook(filename)
+
+                # Ensure local cache directory exists
+                os.makedirs(NOTEBOOKS_DIR, exist_ok=True)
+
+                # Save to local cache for Jupyter kernel
+                file_path = os.path.join(NOTEBOOKS_DIR, filename)
+                with open(file_path, "wb") as f:
+                    f.write(content)
+
+            except FileNotFoundError:
+                raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
+
+        else:
+            # Fallback: local storage
+            file_path = os.path.join(NOTEBOOKS_DIR, filename)
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
+
+        # Set as current notebook
+        CURRENT_NOTEBOOK = filename
+
+        # Load and return basic info about the selected notebook
+        file_path = os.path.join(NOTEBOOKS_DIR, filename)
         with open(file_path, "r", encoding="utf-8") as f:
             nb_data = json.load(f)
 
@@ -340,8 +417,11 @@ async def select_notebook(request: SelectNotebookRequest):
             "cell_count": cell_count,
             "code_cell_count": code_cell_count
         }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read notebook: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to select notebook: {str(e)}")
 
 
 @app.delete("/api/notebooks/{filename}")
@@ -353,43 +433,91 @@ async def delete_notebook(filename: str):
     if filename == CURRENT_NOTEBOOK:
         raise HTTPException(status_code=400, detail="Cannot delete the currently active notebook")
 
-    file_path = os.path.join(NOTEBOOKS_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
-
     try:
-        os.remove(file_path)
-        return {"status": "success", "message": f"Deleted {filename}"}
+        if USE_AZURE_STORAGE:
+            # Delete from Azure Blob Storage
+            result = blob_manager.delete_notebook(filename)
+
+            # Also delete from local cache if exists
+            file_path = os.path.join(NOTEBOOKS_DIR, filename)
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+            return result
+        else:
+            # Fallback: local storage
+            file_path = os.path.join(NOTEBOOKS_DIR, filename)
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
+
+            os.remove(file_path)
+            return {"status": "success", "message": f"Deleted {filename}"}
+
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Notebook not found: {filename}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to delete notebook: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete notebook: {str(e)}")
 
 
 @app.get("/api/notebooks/current")
 async def get_current_notebook():
     """Get information about the current notebook"""
-    file_path = _resolve_notebook_path()
-
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Current notebook not found")
-
-    file_stat = os.stat(file_path)
-
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            nb_data = json.load(f)
+        if USE_AZURE_STORAGE:
+            # Get metadata from Azure Blob Storage
+            try:
+                metadata = blob_manager.get_notebook_metadata(CURRENT_NOTEBOOK)
+            except FileNotFoundError:
+                raise HTTPException(status_code=404, detail="Current notebook not found")
 
-        cell_count = len(nb_data.get("cells", []))
-        code_cell_count = sum(1 for c in nb_data.get("cells", []) if c.get("cell_type") == "code")
+            # Read from local cache to get cell counts
+            file_path = os.path.join(NOTEBOOKS_DIR, CURRENT_NOTEBOOK)
+            if os.path.exists(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    nb_data = json.load(f)
+                cell_count = len(nb_data.get("cells", []))
+                code_cell_count = sum(1 for c in nb_data.get("cells", []) if c.get("cell_type") == "code")
+            else:
+                # If not in cache, download and read
+                content = blob_manager.download_notebook(CURRENT_NOTEBOOK)
+                nb_data = json.loads(content.decode('utf-8'))
+                cell_count = len(nb_data.get("cells", []))
+                code_cell_count = sum(1 for c in nb_data.get("cells", []) if c.get("cell_type") == "code")
 
-        return {
-            "filename": CURRENT_NOTEBOOK,
-            "size": file_stat.st_size,
-            "modified_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
-            "cell_count": cell_count,
-            "code_cell_count": code_cell_count
-        }
+            return {
+                "filename": metadata["filename"],
+                "size": metadata["size"],
+                "modified_at": metadata["modified_at"],
+                "cell_count": cell_count,
+                "code_cell_count": code_cell_count
+            }
+        else:
+            # Fallback: local storage
+            file_path = _resolve_notebook_path()
+
+            if not os.path.exists(file_path):
+                raise HTTPException(status_code=404, detail="Current notebook not found")
+
+            file_stat = os.stat(file_path)
+
+            with open(file_path, "r", encoding="utf-8") as f:
+                nb_data = json.load(f)
+
+            cell_count = len(nb_data.get("cells", []))
+            code_cell_count = sum(1 for c in nb_data.get("cells", []) if c.get("cell_type") == "code")
+
+            return {
+                "filename": CURRENT_NOTEBOOK,
+                "size": file_stat.st_size,
+                "modified_at": datetime.fromtimestamp(file_stat.st_mtime).isoformat(),
+                "cell_count": cell_count,
+                "code_cell_count": code_cell_count
+            }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to read notebook: {e}")
+        raise HTTPException(status_code=400, detail=f"Failed to read notebook: {str(e)}")
 
 
 if __name__ == "__main__":
