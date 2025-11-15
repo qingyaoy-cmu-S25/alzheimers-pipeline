@@ -303,29 +303,64 @@ export function CodeEditor({
                       try {
                         const csvContent = e.target?.result as string;
                         console.log('CSV Content:', csvContent);
+
                         // 调用后端API处理数据
-                        // const response = await fetch(`${API_BASE}/api/process_data`, {
-                        //   method: 'POST',
-                        //   headers: {
-                        //     'Content-Type': 'application/json',
-                        //   },
-                        //   body: JSON.stringify({ data: csvContent }),
-                        // });
-                          generateRecommendations();
-                        
-                        // if (response.ok) {
-                        //   const result = await response.json();
-                        //   addOutput({
-                        //     type: 'table',
-                        //     title: 'Data Preview',
-                        //     content: result.preview,
-                        //   });
-                        //   // 触发AI推荐
-                        // } else {
-                        //   throw new Error('Failed to process data');
-                        // }
+                        const response = await fetch(`${API_BASE}/api/process_data`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ data: csvContent }),
+                        });
+
+                        if (!response.ok) {
+                          const text = await response.text();
+                          throw new Error(`Server error: ${response.status} ${text}`);
+                        }
+
+                        const result = await response.json();
+
+                        // We no longer emit a table preview output here — keep the output pane focused on
+                        // AI recommendations, logs and errors. Backend still returns `preview` if needed.
+
+                        // Add recommendations output if present
+                        if (result.recommendations) {
+                          // Normalize tags for UI (ensure tags exist)
+                          const recs = (result.recommendations || []).map((r: any) => ({
+                            name: r.name || r.title || 'Chart',
+                            confidence: r.confidence || r.score || 80,
+                            reason: r.reason || r.explanation || '',
+                            tags: r.tags || [],
+                            fields: r.fields || r.columns || [],
+                          }));
+
+                          addOutput({
+                            type: 'recommendations',
+                            title: 'AI Visualization Recommendations',
+                            content: {
+                              dataInfo: result.dataInfo,
+                              recommendations: recs,
+                            },
+                          });
+                        } else if (result.recommendations_text || result.parse_error) {
+                          // If backend returned raw text or a parse error (e.g., model error / 429), show as an error
+                          const message = result.recommendations_text || 'Failed to parse AI response';
+                          const stack = result.parse_error || '';
+                          addOutput({
+                            type: 'error',
+                            title: 'AI Recommendation Error',
+                            content: { message, stack },
+                          });
+                        }
+
                       } catch (error) {
+                        console.error('Error processing file:', error);
                         toast.error(`Error processing file: ${error}`);
+                        addOutput({
+                          type: 'error',
+                          title: 'Processing Error',
+                          content: { message: String(error), stack: '' },
+                        });
                       }
                     };
                     reader.readAsText(file);

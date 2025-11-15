@@ -133,6 +133,107 @@ async def execute_code(request: ExecuteRequest):
         }
 
 
+@app.post("/api/process_data")
+async def process_data(payload: dict):
+    """Receive CSV text in `payload['data']`, parse it, generate a preview and call OpenAI to recommend 3 charts.
+
+    Expected input JSON: { "data": "<csv content>" }
+    Returns JSON: { dataInfo, preview, recommendations }
+    """
+    import io
+    import pandas as pd
+
+    try:
+        csv_text = payload.get("data") if isinstance(payload, dict) else None
+        if not csv_text:
+            raise ValueError("Missing 'data' in request body")
+
+        # Try to read CSV into pandas, allow flexible separators
+        try:
+            df = pd.read_csv(io.StringIO(csv_text), sep=None, engine='python')
+        except Exception:
+            # fallback to comma
+            df = pd.read_csv(io.StringIO(csv_text))
+
+        # Build data summary
+        n_rows, n_cols = df.shape
+        columns = list(df.columns.astype(str))
+        dtypes = {col: str(dtype) for col, dtype in df.dtypes.items()}
+
+        # Simple type counts
+        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        categorical_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+
+        data_info = {
+            'samples': int(n_rows),
+            'features': int(n_cols),
+            'columns': columns,
+            'dtypes': dtypes,
+            'numeric_columns': numeric_cols,
+            'categorical_columns': categorical_cols,
+            'type': 'table'
+        }
+
+        # Preview first 5 rows as records (stringify safe)
+        preview = df.head(5).astype(str).to_dict(orient='records')
+
+        # If mock mode enabled, return fake recommendations
+        if os.getenv('OPENAI_MOCK', '').lower() in ['1', 'true', 'yes']:
+            recommendations = [
+                { 'name': 'Bar Chart', 'confidence': 90, 'reason': 'Categorical distribution', 'fields': [columns[0]] },
+                { 'name': 'Scatter Plot', 'confidence': 80, 'reason': 'Numeric correlation', 'fields': numeric_cols[:2] },
+                { 'name': 'Box Plot', 'confidence': 75, 'reason': 'Summary of numeric spread', 'fields': numeric_cols[:1] },
+            ]
+
+            return { 'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations }
+
+        # Build prompt for OpenAI to return 3 chart recommendations in JSON
+        sample_cols = ', '.join(columns[:10])
+        user_prompt = (
+            f"You are a data visualization assistant. Given the following dataset summary:\n"
+            f"Rows: {n_rows}, Columns: {n_cols}. Columns (sample): {sample_cols}.\n"
+            f"Numeric columns: {numeric_cols}. Categorical columns: {categorical_cols}.\n"
+            "Please recommend exactly 3 appropriate chart types for this data. For each recommendation, return a JSON object with keys: name, confidence (0-100), reason (brief), and fields (list of column names to use). Return the final result as a JSON array named 'recommendations'. Do not include extra explanation outside the JSON."
+        )
+
+        messages = format_messages(user_prompt, [])
+
+        # Collect streamed response
+        response_chunks = []
+        async for chunk in get_openai_streaming_response(messages):
+            if chunk:
+                response_chunks.append(chunk)
+
+        model_text = "".join(response_chunks).strip()
+
+        # Try to parse JSON from model_text
+        import re, json as _json
+        try:
+            # extract first JSON block
+            m = re.search(r"\{.*\}|\[.*\]", model_text, flags=re.S)
+            if m:
+                json_text = m.group(0)
+                parsed = _json.loads(json_text)
+                # If it's an object with recommendations key
+                if isinstance(parsed, dict) and 'recommendations' in parsed:
+                    recommendations = parsed['recommendations']
+                elif isinstance(parsed, list):
+                    recommendations = parsed
+                else:
+                    # fallback: wrap into list
+                    recommendations = parsed
+            else:
+                # no JSON found, return raw text
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+        except Exception as e:
+            return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text, 'parse_error': str(e)}
+
+        return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 ## Streaming endpoint removed per user request
 
 @app.post("/api/restart_kernel")

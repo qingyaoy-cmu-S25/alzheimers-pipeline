@@ -111,10 +111,10 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput }: OutputP
             <pre className="text-xs font-mono bg-muted p-3 rounded overflow-x-auto">
               {output.content.stack}
             </pre>
-            <Button variant="outline" size="sm" className="w-full">
+            {/* <Button variant="outline" size="sm" className="w-full">
               <Sparkles className="w-4 h-4 mr-2" />
               Explain & Fix
-            </Button>
+            </Button> */}
           </div>
         );
       
@@ -202,7 +202,7 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput }: OutputP
 
       {/* Outputs */}
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4 min-h-0">
+        <div className="p-4 space-y-4 min-h-0 overflow-auto">
           {outputs.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
               No output yet

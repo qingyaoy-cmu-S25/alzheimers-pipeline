@@ -2,13 +2,29 @@ import openai
 from typing import List, Dict, Generator, Optional
 import json
 import os
+from dotenv import load_dotenv
+import pathlib
+
+# Try loading .env from current working directory first, then explicitly
+# attempt backend/.env (handles running scripts from repository root)
+load_dotenv()
+
+# Explicit fallback: load backend/.env relative to this file
+try:
+    base_dir = pathlib.Path(__file__).resolve().parent.parent  # backend/
+    dotenv_path = base_dir / '.env'
+    if dotenv_path.exists():
+        load_dotenv(dotenv_path)
+except Exception:
+    # ignore errors here, we'll check env var below
+    pass
 
 # Get API key from environment variable
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-print(f"OPENAI_API_KEY: {OPENAI_API_KEY}")
 if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable is required")
+    raise ValueError("OPENAI_API_KEY environment variable is required. Set it in your environment or put it into backend/.env for local development.")
 
+# Initialize OpenAI client
 openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 def safe_extract_content(chunk) -> Optional[str]:
