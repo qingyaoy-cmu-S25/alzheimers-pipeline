@@ -209,9 +209,10 @@ interface NotebookViewProps {
   onCodeChange?: (code: string) => void; // Add prop for code change callback
   onSendErrorToChat?: (errorMessage: string) => void; // Add prop for sending errors to chat
   initialCodes?: Record<string, string>;
+  currentNotebook?: string; // Add prop to track current notebook
 }
 
-export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange, onSendErrorToChat, initialCodes }) => {
+export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange, onSendErrorToChat, initialCodes, currentNotebook }) => {
   const [cellStates, setCellStates] = useState<Record<string, {
     executed: boolean;
     executing: boolean;
@@ -234,10 +235,11 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
 
   const currentCellState = getCurrentCellState();
 
-  // Get current step's code (either edited or template)
+  // Get current step's code (either edited or from initialCodes)
   const getCurrentCode = () => {
     if (!currentStep) return '';
-    return editableCode[currentStep.id] || '';
+    // Return edited code if exists, otherwise return from initialCodes
+    return editableCode[currentStep.id] || (initialCodes && initialCodes[currentStep.id]) || '';
   };
 
   // Check if current code has been edited

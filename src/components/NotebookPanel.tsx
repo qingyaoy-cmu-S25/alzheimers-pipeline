@@ -10,6 +10,7 @@ interface NotebookPanelProps {
   onCodeChange?: (code: string) => void; // Add prop for code change callback
   onSendErrorToChat?: (errorMessage: string) => void; // Add prop for sending errors to chat
   initialCodes?: Record<string, string>;
+  currentNotebook?: string; // Add prop to track current notebook
 }
 
 export const NotebookPanel: React.FC<NotebookPanelProps> = ({
@@ -18,7 +19,8 @@ export const NotebookPanel: React.FC<NotebookPanelProps> = ({
   onStepComplete,
   onCodeChange,
   onSendErrorToChat,
-  initialCodes
+  initialCodes,
+  currentNotebook
 }) => {
   if (!currentStep) {
     return (
@@ -55,12 +57,14 @@ export const NotebookPanel: React.FC<NotebookPanelProps> = ({
 
       {/* Content area */}
       <div className="flex-1 overflow-hidden">
-        <NotebookView 
-          currentStep={currentStep} 
+        <NotebookView
+          key={currentNotebook} // Force remount when notebook changes
+          currentStep={currentStep}
           onStepComplete={onStepComplete}
           onCodeChange={onCodeChange} // Pass the code change handler
           onSendErrorToChat={onSendErrorToChat} // Pass the error sender handler
           initialCodes={initialCodes}
+          currentNotebook={currentNotebook} // Pass current notebook for state clearing
         />
       </div>
     </div>

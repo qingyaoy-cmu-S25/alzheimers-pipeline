@@ -31,6 +31,7 @@ function App() {
   const [initialCodes, setInitialCodes] = useState<Record<string, string>>({});
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [currentNotebook, setCurrentNotebook] = useState<string>('colab.ipynb');
+  const [notebookVersion, setNotebookVersion] = useState<number>(0); // Track notebook changes
   const API_BASE = import.meta.env.VITE_API_BASE || '';
 
   const handleStepClick = (stepId: string) => {
@@ -128,8 +129,14 @@ function App() {
       throw new Error(error.detail || 'Selection failed');
     }
 
+    // Clear all state before loading new notebook
+    setSteps([]);
+    setInitialCodes({});
+    setCurrentStepId(null);
+
     // Update current notebook and reload steps
     setCurrentNotebook(filename);
+    setNotebookVersion(prev => prev + 1); // Increment version to force remount
     await fetchNotebooks();
     await fetchSteps();
   };
@@ -215,12 +222,14 @@ function App() {
       {/* Center Panel - Code Execution */}
       <div className="flex-1 flex flex-col min-w-0">
         <NotebookPanel
+          key={`${currentNotebook}-${notebookVersion}`} // Force remount on notebook change or version change
           currentStep={currentStepId ? steps.find(s => s.id === currentStepId) || null : null}
           stepResult={null}
           onStepComplete={handleStepComplete}
           onCodeChange={handleCodeChange} // Pass the code change handler
           onSendErrorToChat={handleSendErrorToChat} // Pass the error sender handler
           initialCodes={initialCodes}
+          currentNotebook={currentNotebook} // Pass current notebook for state clearing
         />
       </div>
 
