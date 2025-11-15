@@ -295,75 +295,73 @@ export function CodeEditor({
             <div className="flex-1 p-4 overflow-auto">
               {currentStep.title.toLowerCase().includes('visual') ? (
                 <FileUploader 
-                  onFileUpload={(file) => {
+                  onFileUpload={async (file, parsed) => {
                     toast.success(`File ${file.name} uploaded successfully`);
-                    // 处理文件上传后的逻辑
-                    const reader = new FileReader();
-                    reader.onload = async (e) => {
-                      try {
-                        const csvContent = e.target?.result as string;
-                        console.log('CSV Content:', csvContent);
+                    try {
+                      let bodyData: any = null;
 
-                        // 调用后端API处理数据
-                        const response = await fetch(`${API_BASE}/api/process_data`, {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
+                      if (parsed && parsed.headers && parsed.rows) {
+                        // Frontend already parsed into { headers, rows }
+                        bodyData = parsed;
+                      } else {
+                        // Fallback: read raw CSV text from file
+                        const text = await file.text();
+                        bodyData = text;
+                      }
+
+                      // 调用后端API处理数据
+                      const response = await fetch(`${API_BASE}/api/process_data`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ data: bodyData }),
+                      });
+
+                      if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(`Server error: ${response.status} ${text}`);
+                      }
+
+                      const result = await response.json();
+
+                      // Add recommendations output if present
+                      if (result.recommendations) {
+                        const recs = (result.recommendations || []).map((r: any) => ({
+                          name: r.name || r.title || 'Chart',
+                          confidence: r.confidence || r.score || 80,
+                          reason: r.reason || r.explanation || '',
+                          tags: r.tags || [],
+                          fields: r.fields || r.columns || [],
+                        }));
+
+                        addOutput({
+                          type: 'recommendations',
+                          title: 'AI Visualization Recommendations',
+                          content: {
+                            dataInfo: result.dataInfo,
+                            recommendations: recs,
                           },
-                          body: JSON.stringify({ data: csvContent }),
                         });
-
-                        if (!response.ok) {
-                          const text = await response.text();
-                          throw new Error(`Server error: ${response.status} ${text}`);
-                        }
-
-                        const result = await response.json();
-
-                        // We no longer emit a table preview output here — keep the output pane focused on
-                        // AI recommendations, logs and errors. Backend still returns `preview` if needed.
-
-                        // Add recommendations output if present
-                        if (result.recommendations) {
-                          // Normalize tags for UI (ensure tags exist)
-                          const recs = (result.recommendations || []).map((r: any) => ({
-                            name: r.name || r.title || 'Chart',
-                            confidence: r.confidence || r.score || 80,
-                            reason: r.reason || r.explanation || '',
-                            tags: r.tags || [],
-                            fields: r.fields || r.columns || [],
-                          }));
-
-                          addOutput({
-                            type: 'recommendations',
-                            title: 'AI Visualization Recommendations',
-                            content: {
-                              dataInfo: result.dataInfo,
-                              recommendations: recs,
-                            },
-                          });
-                        } else if (result.recommendations_text || result.parse_error) {
-                          // If backend returned raw text or a parse error (e.g., model error / 429), show as an error
-                          const message = result.recommendations_text || 'Failed to parse AI response';
-                          const stack = result.parse_error || '';
-                          addOutput({
-                            type: 'error',
-                            title: 'AI Recommendation Error',
-                            content: { message, stack },
-                          });
-                        }
-
-                      } catch (error) {
-                        console.error('Error processing file:', error);
-                        toast.error(`Error processing file: ${error}`);
+                      } else if (result.recommendations_text || result.parse_error) {
+                        const message = result.recommendations_text || 'Failed to parse AI response';
+                        const stack = result.parse_error || '';
                         addOutput({
                           type: 'error',
-                          title: 'Processing Error',
-                          content: { message: String(error), stack: '' },
+                          title: 'AI Recommendation Error',
+                          content: { message, stack },
                         });
                       }
-                    };
-                    reader.readAsText(file);
+
+                    } catch (error) {
+                      console.error('Error processing file:', error);
+                      toast.error(`Error processing file: ${error}`);
+                      addOutput({
+                        type: 'error',
+                        title: 'Processing Error',
+                        content: { message: String(error), stack: '' },
+                      });
+                    }
                   }}
                   acceptedFileTypes={['.csv', '.xlsx', '.xls']}
                   maxFileSize={10 * 1024 * 1024} // 10MB

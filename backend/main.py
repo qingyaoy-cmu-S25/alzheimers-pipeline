@@ -142,18 +142,42 @@ async def process_data(payload: dict):
     """
     import io
     import pandas as pd
-
     try:
-        csv_text = payload.get("data") if isinstance(payload, dict) else None
-        if not csv_text:
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if data is None:
             raise ValueError("Missing 'data' in request body")
 
-        # Try to read CSV into pandas, allow flexible separators
-        try:
-            df = pd.read_csv(io.StringIO(csv_text), sep=None, engine='python')
-        except Exception:
-            # fallback to comma
-            df = pd.read_csv(io.StringIO(csv_text))
+        # Support multiple input formats from frontend:
+        # 1) raw CSV text (string)
+        # 2) parsed object { headers: string[], rows: string[][] } (from FileUploader.parseCSV)
+        # 3) list of records (list[dict])
+        df = None
+        if isinstance(data, str):
+            # raw CSV text
+            csv_text = data
+            print("csv_text received:", csv_text[:100])  # Print first 100 chars for debug
+            # Try to read CSV into pandas, allow flexible separators
+            try:
+                df = pd.read_csv(io.StringIO(csv_text), sep=None, engine='python')
+            except Exception:
+                # fallback to comma
+                df = pd.read_csv(io.StringIO(csv_text))
+        elif isinstance(data, dict) and 'headers' in data and 'rows' in data:
+            # Parsed format from frontend FileUploader: headers + rows (array of arrays)
+            headers = data.get('headers') or []
+            rows = data.get('rows') or []
+            # Build list of records
+            records = []
+            for r in rows:
+                # If row is shorter/longer than headers, align accordingly
+                row_dict = {headers[i]: (r[i] if i < len(r) else None) for i in range(len(headers))}
+                records.append(row_dict)
+            df = pd.DataFrame.from_records(records, columns=headers)
+        elif isinstance(data, list):
+            # list of records
+            df = pd.DataFrame.from_records(data)
+        else:
+            raise ValueError("Unrecognized 'data' format. Expect raw CSV text or parsed {headers, rows} or list of records")
 
         # Build data summary
         n_rows, n_cols = df.shape
@@ -209,26 +233,43 @@ async def process_data(payload: dict):
         # Try to parse JSON from model_text
         import re, json as _json
         try:
-            # extract first JSON block
+            # extract first JSON-like block
             m = re.search(r"\{.*\}|\[.*\]", model_text, flags=re.S)
-            if m:
-                json_text = m.group(0)
-                parsed = _json.loads(json_text)
-                # If it's an object with recommendations key
-                if isinstance(parsed, dict) and 'recommendations' in parsed:
-                    recommendations = parsed['recommendations']
-                elif isinstance(parsed, list):
-                    recommendations = parsed
-                else:
-                    # fallback: wrap into list
-                    recommendations = parsed
-            else:
-                # no JSON found, return raw text
+            if not m:
+                # no JSON-like block found, return raw text
                 return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
-        except Exception as e:
-            return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text, 'parse_error': str(e)}
 
-        return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
+            json_text = m.group(0)
+            parsed = None
+
+            # First try strict JSON
+            try:
+                parsed = _json.loads(json_text)
+            except Exception:
+                # Fallback: try Python literal eval (handles single quotes)
+                try:
+                    import ast
+                    parsed = ast.literal_eval(json_text)
+                except Exception:
+                    parsed = None
+
+            if parsed is None:
+                # Could not parse JSON or Python literal -> return raw model text
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+
+            # If parsed is a dict containing recommendations key
+            if isinstance(parsed, dict) and 'recommendations' in parsed:
+                recommendations = parsed['recommendations']
+            elif isinstance(parsed, list):
+                recommendations = parsed
+            else:
+                # parsed something else (e.g., an error dict) -> return raw text
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+
+            return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
+        except Exception:
+            # Any unexpected parsing error -> return raw model text
+            return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

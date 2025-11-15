@@ -13,7 +13,8 @@ import {
 } from './ui/table';
 
 interface FileUploaderProps {
-  onFileUpload: (file: File) => void;
+  // onFileUpload now receives the original File and the parsed data (headers + rows)
+  onFileUpload: (file: File, parsed?: { headers: string[]; rows: string[][] }) => void;
   acceptedFileTypes?: string[];
   maxFileSize?: number; // in bytes
 }
@@ -112,9 +113,9 @@ export function FileUploader({
     try {
       const text = await file.text();
       
-      const parsedData = parseCSV(text);
-      setPreview(parsedData);
-      onFileUpload(file);
+        const parsedData = parseCSV(text);
+        setPreview(parsedData);
+        onFileUpload(file, parsedData);
       setError(null);
     } catch (err) {
       setError('Error reading file. Please try again.');
