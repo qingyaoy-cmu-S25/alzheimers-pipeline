@@ -4,6 +4,8 @@ import { WorkflowNavigation } from './components/WorkflowNavigation';
 import { CodeEditor } from './components/CodeEditor';
 import { AIAssistant } from './components/AIAssistant';
 import { Toaster } from './components/ui/sonner';
+import { Button } from './components/ui/button';
+import { useDarkMode } from './darkmode';
 import { WorkflowStep, StepStatus, WorkflowState, ChatMessage, OutputItem, PipelineStep } from './types';
 
 const initialMessages: ChatMessage[] = [
@@ -27,6 +29,7 @@ const workflowStepMapping: Record<WorkflowStep, number | null> = {
 };
 
 function App() {
+  const { isDark, toggleDarkMode } = useDarkMode();
   const [currentStep, setCurrentStep] = useState<WorkflowStep>('environment');
   const [workflowState, setWorkflowState] = useState<WorkflowState>({
     environment: 'pending',
@@ -266,10 +269,43 @@ function App() {
           </div>
           <h1 className="text-lg font-semibold">Biomedical Workflow Platform</h1>
         </div>
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>GPU: RTX 4090</span>
-          <span>•</span>
-          <span>Memory: 32GB</span>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <span>GPU: RTX 4090</span>
+            <span>•</span>
+            <span>Memory: 32GB</span>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => toggleDarkMode()}
+            className="flex items-center gap-2"
+            aria-label="Toggle dark mode"
+          >
+            {isDark ? (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
+                </svg>
+                <span className="text-sm">Dark</span>
+              </>
+            ) : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="4"></circle>
+                  <path d="M12 2v2"></path>
+                  <path d="M12 20v2"></path>
+                  <path d="m4.93 4.93 1.41 1.41"></path>
+                  <path d="m17.66 17.66 1.41 1.41"></path>
+                  <path d="M2 12h2"></path>
+                  <path d="M20 12h2"></path>
+                  <path d="m6.34 17.66-1.41 1.41"></path>
+                  <path d="m19.07 4.93-1.41 1.41"></path>
+                </svg>
+                <span className="text-sm">Light</span>
+              </>
+            )}
+          </Button>
         </div>
       </div>
 
