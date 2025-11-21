@@ -7,20 +7,37 @@ import pathlib
 
 # Try loading .env from current working directory first, then explicitly
 # attempt backend/.env (handles running scripts from repository root)
-load_dotenv()
+# Handle encoding issues gracefully
+try:
+    load_dotenv(encoding='utf-8')
+except UnicodeDecodeError:
+    try:
+        load_dotenv()
+    except Exception:
+        pass
+except Exception:
+    pass
 
 # Explicit fallback: load backend/.env relative to this file
 try:
     base_dir = pathlib.Path(__file__).resolve().parent.parent  # backend/
     dotenv_path = base_dir / '.env'
     if dotenv_path.exists():
-        load_dotenv(dotenv_path)
+        try:
+            load_dotenv(dotenv_path, encoding='utf-8')
+        except UnicodeDecodeError:
+            try:
+                load_dotenv(dotenv_path)
+            except Exception:
+                pass
+        except Exception:
+            pass
 except Exception:
     # ignore errors here, we'll check env var below
     pass
 
 # Get API key from environment variable
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = "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"
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required. Set it in your environment or put it into backend/.env for local development.")
 

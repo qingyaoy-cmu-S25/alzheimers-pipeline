@@ -8,7 +8,20 @@ import os
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-load_dotenv()
+# Handle encoding issues gracefully
+try:
+    load_dotenv(encoding='utf-8')
+except UnicodeDecodeError:
+    # If UTF-8 fails, try without specifying encoding (let dotenv handle it)
+    try:
+        load_dotenv()
+    except Exception:
+        # If .env file doesn't exist or has issues, continue without it
+        # Environment variables can still be set via system/env
+        pass
+except Exception:
+    # Any other error loading .env - continue without it
+    pass
 
 from models.openai_chat import get_openai_streaming_response, format_messages
 from kernel_manager import get_kernel_manager

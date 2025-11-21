@@ -135,3 +135,5 @@ tmp/
 # Backup files
 *.bak
 *.backup
+backend/main.py
+backend/models/openai_chat.py
