@@ -51,6 +51,7 @@ export function AIAssistant({
   const [currentMessage, setCurrentMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<ChatWebSocket | null>(null);
+  const accumulatedMessageRef = useRef<string>('');
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -113,6 +114,8 @@ export function AIAssistant({
 
     setIsTyping(true);
     setCurrentMessage('');
+    // Reset accumulated message ref
+    accumulatedMessageRef.current = '';
 
     // Prepare chat history for context
     const history: WSChatMessage[] = messages
@@ -131,13 +134,16 @@ export function AIAssistant({
 
     wsRef.current.sendMessage(contextMessage, history, {
       onProgress: (chunk: string) => {
-        setCurrentMessage(prev => prev + chunk);
+        accumulatedMessageRef.current += chunk;
+        setCurrentMessage(accumulatedMessageRef.current);
       },
       onEnd: () => {
-        if (currentMessage) {
-          onSendMessage(currentMessage, 'assistant');
-          setCurrentMessage('');
+        const finalMessage = accumulatedMessageRef.current;
+        if (finalMessage && finalMessage.trim()) {
+          onSendMessage(finalMessage, 'assistant');
         }
+        setCurrentMessage('');
+        accumulatedMessageRef.current = '';
         setIsTyping(false);
       },
       onError: (error) => {
@@ -145,6 +151,7 @@ export function AIAssistant({
         onSendMessage(`Error: ${error || 'Failed to get response'}`, 'assistant');
         setIsTyping(false);
         setCurrentMessage('');
+        accumulatedMessageRef.current = '';
       },
     });
   };

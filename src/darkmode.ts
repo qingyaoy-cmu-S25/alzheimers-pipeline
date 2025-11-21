@@ -1,4 +1,36 @@
 import { useEffect, useState } from 'react';
+import { loader } from '@monaco-editor/react';
+
+// Function to update Monaco editor theme
+const updateMonacoTheme = async (isDark: boolean) => {
+  try {
+    // Use the loader to get monaco instance
+    const monaco = await loader.init();
+    
+    // Define custom white theme if it doesn't exist
+    try {
+      monaco.editor.defineTheme('custom-white', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': '#ffffff',
+          'editor.foreground': '#000000',
+        }
+      });
+    } catch (error) {
+      // Theme might already be defined, that's okay
+    }
+    
+    // Set the theme
+    const theme = isDark ? 'vs-dark' : 'custom-white';
+    monaco.editor.setTheme(theme);
+    console.log('Monaco theme set to:', theme, 'isDark:', isDark);
+  } catch (error) {
+    // Monaco might not be loaded yet, that's okay
+    console.log('Monaco not available yet, will retry on next change');
+  }
+};
 
 export function useDarkMode() {
   const [isDark, setIsDark] = useState<boolean>(() => {
@@ -19,6 +51,9 @@ export function useDarkMode() {
       root.classList.remove('dark');
     }
     
+    // Try to set Monaco theme on initial load
+    updateMonacoTheme(initialDark);
+    
     return initialDark;
   });
 
@@ -30,6 +65,9 @@ export function useDarkMode() {
       root.classList.remove('dark');
     }
     localStorage.setItem('darkMode', String(isDark));
+    
+    // Update Monaco editor theme when dark mode changes
+    updateMonacoTheme(isDark);
   }, [isDark]);
 
   const toggleDarkMode = (value?: boolean) => {

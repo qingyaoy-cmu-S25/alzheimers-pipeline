@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { PipelineStep, CellOutput, OutputItem } from '../types';
 import { Button } from './ui/button';
-import { Textarea } from './ui/textarea';
+import Editor from '@monaco-editor/react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './ui/resizable';
 import { Play, Settings, Save, Download, Sparkles, RotateCcw } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from './ui/sheet';
@@ -10,6 +10,7 @@ import { OutputPanel } from './OutputPanel';
 import { FileUploader } from './FileUploader';
 import { toast } from 'sonner';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import { useDarkMode } from '../darkmode';
 
 interface CodeEditorProps {
   currentStep: PipelineStep | null; // Changed to PipelineStep
@@ -76,10 +77,29 @@ export function CodeEditor({
   toggleReportItem,
   removeOutput,
 }: CodeEditorProps) {
+  const { isDark } = useDarkMode();
   const [isRunning, setIsRunning] = useState(false);
   const [isRestartingKernel, setIsRestartingKernel] = useState(false);
   const [showRestartConfirmation, setShowRestartConfirmation] = useState(false);
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
   const API_BASE = import.meta.env.VITE_API_BASE || '';
+  
+  // Update theme when isDark changes
+  useEffect(() => {
+    if (monacoRef.current) {
+      const theme = isDark ? 'vs-dark' : 'custom-white';
+      // Use monaco.editor.setTheme() directly - this updates all editors
+      try {
+        const monaco = monacoRef.current;
+        monaco.editor.setTheme(theme);
+        console.log('Monaco theme updated to:', theme, 'isDark:', isDark);
+      } catch (error) {
+        console.error('Error setting Monaco theme:', error);
+      }
+    }
+  }, [isDark]);
+  
   // Notify parent when code changes
   useEffect(() => {
     if (onCodeChange && code) {
@@ -367,11 +387,47 @@ export function CodeEditor({
                   maxFileSize={10 * 1024 * 1024} // 10MB
                 />
               ) : (
-                <Textarea
+                <Editor
+                  key={`editor-theme-${isDark ? 'dark' : 'light'}`}
+                  height="100%"
+                  language="python"
                   value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  className="font-mono text-sm h-full resize-none"
-                  placeholder="Enter code here..."
+                  onChange={(value) => setCode(value || '')}
+                  theme={isDark ? 'vs-dark' : 'custom-white'}
+                  options={{
+                    minimap: { enabled: true },
+                    fontSize: 14,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    tabSize: 4,
+                    wordWrap: 'on',
+                    padding: { top: 16, bottom: 16 },
+                  }}
+                  beforeMount={(monaco) => {
+                    // Define custom white theme - ensure it's always defined
+                    try {
+                      monaco.editor.defineTheme('custom-white', {
+                        base: 'vs',
+                        inherit: true,
+                        rules: [],
+                        colors: {
+                          'editor.background': '#ffffff',
+                          'editor.foreground': '#000000',
+                        }
+                      });
+                    } catch (error) {
+                      // Theme might already be defined
+                    }
+                  }}
+                  onMount={(editor, monaco) => {
+                    editorRef.current = editor;
+                    monacoRef.current = monaco;
+                    // Set theme after mount using the current isDark value
+                    const theme = isDark ? 'vs-dark' : 'custom-white';
+                    monaco.editor.setTheme(theme);
+                    console.log('Editor mounted with theme:', theme, 'isDark:', isDark);
+                  }}
                 />
               )}
             </div>
