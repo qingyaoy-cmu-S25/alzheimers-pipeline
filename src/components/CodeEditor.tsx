@@ -10,6 +10,9 @@ import { OutputPanel } from './OutputPanel';
 import { FileUploader } from './FileUploader';
 import { toast } from 'sonner';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './ui/alert-dialog';
+import { ChartView } from './ChartView';
+import D3Sandbox from './D3Sandbox';
+import type { ChartPayload } from '../lib/chart-utils';
 import { useDarkMode } from '../darkmode';
 
 interface CodeEditorProps {
@@ -81,6 +84,54 @@ export function CodeEditor({
   const [isRunning, setIsRunning] = useState(false);
   const [isRestartingKernel, setIsRestartingKernel] = useState(false);
   const [showRestartConfirmation, setShowRestartConfirmation] = useState(false);
+  const [chartModalOpen, setChartModalOpen] = useState(false);
+  const [chartModalPayload, setChartModalPayload] = useState<ChartPayload | null>(null);
+  const [chartModalD3Code, setChartModalD3Code] = useState<string | null>(null);
+  const [chartModalD3Data, setChartModalD3Data] = useState<any>(null);
+
+  // Infer sensible fields from preview records when recommendation lacks fields
+  const inferFieldsFromRecords = (records: any[], recName = ''): string[] => {
+    if (!records || !Array.isArray(records) || records.length === 0) return [];
+    const sample = records.find(r => r && typeof r === 'object') || records[0];
+    if (!sample || typeof sample !== 'object') return [];
+    const keys = Object.keys(sample);
+
+    // Score numeric columns
+    const numericKeys: string[] = [];
+    const categoricalKeys: string[] = [];
+    keys.forEach(k => {
+      let numericCount = 0;
+      for (let i = 0; i < Math.min(20, records.length); i++) {
+        const v = records[i]?.[k];
+        if (v === null || v === undefined || v === '') continue;
+        if (!isNaN(Number(v))) numericCount++;
+      }
+      if (numericCount >= Math.min(3, records.length)) numericKeys.push(k);
+      else categoricalKeys.push(k);
+    });
+
+    const name = (recName || '').toLowerCase();
+    if (name.includes('scatter')) {
+      if (numericKeys.length >= 2) return [numericKeys[0], numericKeys[1]];
+      if (numericKeys.length >= 1 && categoricalKeys.length >= 1) return [categoricalKeys[0], numericKeys[0]];
+    }
+    if (name.includes('pie')) {
+      if (categoricalKeys.length >= 1) return [categoricalKeys[0]];
+      if (numericKeys.length >= 1) return [numericKeys[0]];
+    }
+    if (name.includes('group') || name.includes('stack')) {
+      if (categoricalKeys.length >= 1) {
+        const second = categoricalKeys[1] || numericKeys[0] || keys[1];
+        return [categoricalKeys[0], second].filter(Boolean) as string[];
+      }
+    }
+
+    // default heuristic: categorical x, numeric y
+    if (categoricalKeys.length >= 1 && numericKeys.length >= 1) return [categoricalKeys[0], numericKeys[0]];
+    if (numericKeys.length >= 2) return [numericKeys[0], numericKeys[1]];
+    // fallback to first two keys
+    return keys.slice(0, 2);
+  };
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -353,6 +404,7 @@ export function CodeEditor({
                           reason: r.reason || r.explanation || '',
                           tags: r.tags || [],
                           fields: r.fields || r.columns || [],
+                          d3_js: r.d3_js || undefined, // Include d3_js if present from backend
                         }));
 
                         addOutput({
@@ -361,6 +413,8 @@ export function CodeEditor({
                           content: {
                             dataInfo: result.dataInfo,
                             recommendations: recs,
+                            // include preview records so Generate can use them
+                            records: result.preview || [],
                           },
                         });
                       } else if (result.recommendations_text || result.parse_error) {
@@ -442,6 +496,30 @@ export function CodeEditor({
             outputs={outputs}
             toggleReportItem={toggleReportItem}
             removeOutput={removeOutput}
+            onGenerateChart={(output, recommendation) => {
+              const records = output.content?.records || [];
+
+              // Ensure recommendation has fields; infer from records if missing
+              const fields = (recommendation.fields && recommendation.fields.length)
+                ? recommendation.fields
+                : inferFieldsFromRecords(records, recommendation.name || recommendation.title || '');
+
+              const recWithFields = { ...recommendation, fields };
+
+              // If recommendation provides d3_js, preview it in the global modal (do not add to outputs)
+              if (recWithFields.d3_js) {
+                const code = recWithFields.d3_js as string;
+                const dataForCode = records || [];
+                setChartModalD3Code(code);
+                setChartModalD3Data(dataForCode);
+                setChartModalPayload(null);
+                setChartModalOpen(true);
+                return;
+              }
+
+              // If no d3_js is present, show error so model/back-end can be adjusted
+              addOutput({ type: 'error', title: 'Chart Error', content: { message: 'AI did not provide D3 code for this recommendation.', stack: '' } });
+            }}
           />
         </ResizablePanel>
       </ResizablePanelGroup>
@@ -459,6 +537,37 @@ export function CodeEditor({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={handleRestartKernel}>Restart Kernel</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Chart Preview Dialog */}
+      <AlertDialog open={chartModalOpen} onOpenChange={setChartModalOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Chart Preview</AlertDialogTitle>
+            <AlertDialogDescription>
+              Preview of the generated visualization. Close to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="mt-2">
+            {chartModalD3Code ? (
+              <div className="w-full h-72">
+                <D3Sandbox code={chartModalD3Code} data={chartModalD3Data} height={260} useIframe={false} />
+              </div>
+            ) : chartModalPayload ? (
+              <div className="w-full h-80">
+                <ChartView payload={chartModalPayload} />
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground">No chart to preview</div>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Close</AlertDialogCancel>
+            <AlertDialogAction onClick={() => setChartModalOpen(false)}>Done</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

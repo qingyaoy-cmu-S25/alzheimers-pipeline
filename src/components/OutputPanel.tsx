@@ -27,14 +27,17 @@ import {
   TableRow,
 } from './ui/table';
 import { cn } from './ui/utils';
+import { ChartView } from './ChartView';
+import D3Sandbox from './D3Sandbox';
 
 interface OutputPanelProps {
   outputs: OutputItem[];
   toggleReportItem: (id: string) => void;
   removeOutput: (id: string) => void;
+  onGenerateChart?: (output: OutputItem, recommendation: any) => void;
 }
 
-export function OutputPanel({ outputs, toggleReportItem, removeOutput }: OutputPanelProps) {
+export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerateChart }: OutputPanelProps) {
   const getIcon = (type: OutputItem['type']) => {
     switch (type) {
       case 'chart':
@@ -91,12 +94,15 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput }: OutputP
       
       case 'chart':
         return (
-          <div className="bg-muted rounded-lg h-64 flex items-center justify-center">
-            <div className="text-center space-y-2">
-              <BarChart3 className="w-12 h-12 mx-auto text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">UMAP Visualization</p>
-              <p className="text-xs text-muted-foreground">2000 cells • 5 cell types</p>
-            </div>
+          <div className="rounded-lg">
+            <ChartView payload={output.content} />
+          </div>
+        );
+
+      case 'd3':
+        return (
+          <div className="rounded-lg">
+            <D3Sandbox code={output.content.code} data={output.content.data || []} height={320} useIframe={false} />
           </div>
         );
       
@@ -136,8 +142,8 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput }: OutputP
               </div>
             </div>
 
-            {/* Recommendations */}
-            <div className="space-y-3">
+            {/* Recommendations (list + footer inside one scrollable container) */}
+            <div className="space-y-3 max-h-[40vh] overflow-auto pr-2">
               {output.content.recommendations.map((rec: any, index: number) => (
                 <Card key={index} className="p-4 hover:bg-accent/50 transition-colors border-2">
                   <div className="flex items-start gap-3">
@@ -151,17 +157,22 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput }: OutputP
                           {rec.confidence}% match
                         </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground leading-relaxed">
+                      <p className="text-xs text-muted-foreground leading-relaxed break-words">
                         {rec.reason}
                       </p>
                       <div className="flex flex-wrap gap-1 mt-2">
-                        {rec.tags.map((tag: string, i: number) => (
+                        {(rec.tags || []).map((tag: string, i: number) => (
                           <Badge key={i} variant="secondary" className="text-xs">
                             {tag}
                           </Badge>
                         ))}
                       </div>
-                      <Button variant="outline" size="sm" className="w-full mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2"
+                        onClick={() => onGenerateChart && onGenerateChart(output, rec)}
+                      >
                         <ArrowRight className="w-3 h-3 mr-2" />
                         Generate {rec.name}
                       </Button>
@@ -169,14 +180,14 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput }: OutputP
                   </div>
                 </Card>
               ))}
-            </div>
 
-            {/* Footer tip */}
-            <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg">
-              <Lightbulb className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-muted-foreground">
-                Click on any recommendation to automatically generate the code and parameters for that visualization.
-              </p>
+              {/* Footer tip moved inside scrollable container so it can be scrolled into view */}
+              <div className="flex items-start gap-2 p-3 bg-muted/50 rounded-lg mt-2">
+                <Lightbulb className="w-4 h-4 text-yellow-500 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-muted-foreground">
+                  Click on any recommendation to automatically generate the code and parameters for that visualization.
+                </p>
+              </div>
             </div>
           </div>
         );

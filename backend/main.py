@@ -227,10 +227,38 @@ async def process_data(payload: dict):
         # Build prompt for OpenAI to return 3 chart recommendations in JSON
         sample_cols = ', '.join(columns[:10])
         user_prompt = (
-            f"You are a data visualization assistant. Given the following dataset summary:\n"
-            f"Rows: {n_rows}, Columns: {n_cols}. Columns (sample): {sample_cols}.\n"
+            f"You are a data visualization expert. Given the following dataset:\n"
+            f"Rows: {n_rows}, Columns: {n_cols}. Columns: {sample_cols}.\n"
             f"Numeric columns: {numeric_cols}. Categorical columns: {categorical_cols}.\n"
-            "Please recommend exactly 3 appropriate chart types for this data. For each recommendation, return a JSON object with keys: name, confidence (0-100), reason (brief), and fields (list of column names to use). Return the final result as a JSON array named 'recommendations'. Do not include extra explanation outside the JSON."
+            f"\n"
+            f"Sample data preview:\n{json.dumps(preview[:3], indent=2)}\n"
+            f"\n"
+            f"Please recommend exactly 3 appropriate chart types for this data.\n"
+            f"\n"
+            f"For EACH recommendation, return a JSON object with EXACTLY these keys:\n"
+            f"- name: (string) short human-readable chart title\n"
+            f"- confidence: (integer 0-100) confidence that this chart fits the data\n"
+            f"- reason: (string) brief 1-2 sentence rationale\n"
+            f"- fields: (array of strings) column names the chart should use (e.g., ['Variable', 'IRR'])\n"
+            f"- d3_js: (string) D3 v7 JavaScript code (can be IIFE or plain statements) that renders the chart into element with id='sandbox'.\n"
+            f"\n"
+            f"IMPORTANT CONSTRAINTS for d3_js:\n"
+            f"1. Code will be executed in an iframe with D3 v7 loaded globally.\n"
+            f"2. The variable 'data' (array of objects) is provided globally before your code runs.\n"
+            f"3. A container <div id='sandbox'></div> exists. Use d3.select('#sandbox') to access it, NOT '#root'.\n"
+            f"4. If code is wrapped in IIFE: (function(){{ ... }})(); - that's fine, it will execute.\n"
+            f"5. If code is plain statements - that's also fine, no wrapper needed.\n"
+            f"6. Handle string numbers: parseFloat(String(value).replace(/,/g, ''))\n"
+            f"7. Clear sandbox first: d3.select('#sandbox').selectAll('*').remove();\n"
+            f"8. Use D3 v7 patterns: .join(), .enter(), .exit() properly.\n"
+            f"9. Build proper scales, axes, margins for a professional chart.\n"
+            f"10. Use visual encoding: colors, sizes, positions for different dimensions.\n"
+            f"\n"
+            f"Return result as valid JSON ONLY:\n"
+            f"- Option 1: top-level array: [{{ ... }}, {{ ... }}, {{ ... }}]\n"
+            f"- Option 2: object with key: {{ \"recommendations\": [{{ ... }}, ...] }}\n"
+            f"\n"
+            f"CRITICAL: NO markdown, NO code blocks, NO backticks, NO extra text. ONLY valid JSON parseable by JSON.parse()."
         )
 
         messages = format_messages(user_prompt, [])
@@ -273,13 +301,30 @@ async def process_data(payload: dict):
             # If parsed is a dict containing recommendations key
             if isinstance(parsed, dict) and 'recommendations' in parsed:
                 recommendations = parsed['recommendations']
-            elif isinstance(parsed, list):
-                recommendations = parsed
-            else:
-                # parsed something else (e.g., an error dict) -> return raw text
-                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+                print(f"[DEBUG] OpenAI returned {len(recommendations)} recommendations")
+                
+                # Just pass through the recommendations as-is (OpenAI should provide d3_js)
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
 
-            return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
+            # If parsed is a dict that looks like an API error (common from OpenAI/Azure):
+            # {"error": {"message": ..., "type": ..., "code": ...}}
+            if isinstance(parsed, dict) and 'error' in parsed:
+                err = parsed.get('error') or {}
+                model_error = {
+                    'code': err.get('code') or err.get('status') or None,
+                    'type': err.get('type') or None,
+                    'message': err.get('message') or str(err)
+                }
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text, 'model_error': model_error}
+
+            # If parsed is a list, assume it's the recommendations list
+            if isinstance(parsed, list):
+                recommendations = parsed
+                # Just pass through as-is (OpenAI should provide d3_js)
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
+
+            # Otherwise return raw model text (unknown structure)
+            return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
         except Exception:
             # Any unexpected parsing error -> return raw model text
             return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
