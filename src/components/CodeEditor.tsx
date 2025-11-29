@@ -135,7 +135,7 @@ export function CodeEditor({
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
   const API_BASE = import.meta.env.VITE_API_BASE || '';
-  
+
   // Update theme when isDark changes
   useEffect(() => {
     if (monacoRef.current) {
@@ -150,7 +150,7 @@ export function CodeEditor({
       }
     }
   }, [isDark]);
-  
+
   // Notify parent when code changes
   useEffect(() => {
     if (onCodeChange && code) {
@@ -186,7 +186,7 @@ export function CodeEditor({
 
       if (response.ok) {
         const result = await response.json();
-        
+
         // Check if execution was successful
         const hasError = result.outputs && result.outputs.some((output: any) => output.type === 'error');
         const success = result.status === 'ok' && !hasError;
@@ -223,7 +223,7 @@ export function CodeEditor({
     } catch (error) {
       console.error('Error executing code:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       addOutput({
         type: 'error',
         title: 'Execution Error',
@@ -260,14 +260,14 @@ export function CodeEditor({
         if (result.status === 'restarted') {
           // Clear all outputs
           outputs.forEach(output => removeOutput(output.id));
-          
+
           // Show success message
           addOutput({
             type: 'log',
             title: 'Kernel Restarted',
             content: '✓ Kernel restarted successfully.\n\nAll variables and imports have been cleared.\nYou may need to re-run previous cells.',
           });
-          
+
           toast.success('Kernel restarted successfully');
         }
       } else {
@@ -342,8 +342,8 @@ export function CodeEditor({
                     <ParameterDrawer currentStep={currentStep.title as any} />
                   </SheetContent>
                 </Sheet>
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   size="sm"
                   onClick={() => setShowRestartConfirmation(true)}
                   disabled={isRestartingKernel}
@@ -351,8 +351,8 @@ export function CodeEditor({
                   <RotateCcw className="w-4 h-4 mr-2" />
                   {isRestartingKernel ? 'Restarting...' : 'Restart Kernel'}
                 </Button>
-                <Button 
-                  size="sm" 
+                <Button
+                  size="sm"
                   onClick={executeCode}
                   disabled={isRunning || !code}
                 >
@@ -365,29 +365,40 @@ export function CodeEditor({
             {/* Code editor or File uploader */}
             <div className="flex-1 p-4 overflow-auto">
               {currentStep.title.toLowerCase().includes('visual') ? (
-                <FileUploader 
+                <FileUploader
                   onFileUpload={async (file, parsed) => {
                     toast.success(`File ${file.name} uploaded successfully`);
                     try {
                       let bodyData: any = null;
-
+                      const name = file.name.toLowerCase();
+                      const ext = '.' + name.split('.').pop()?.toLowerCase();
                       if (parsed && parsed.headers && parsed.rows) {
                         // Frontend already parsed into { headers, rows }
                         bodyData = parsed;
                       } else {
                         // Fallback: read raw CSV text from file
-                        const text = await file.text();
-                        bodyData = text;
+                        if (ext !== '.h5' && ext !== '.h5ad') {
+                          const text = await file.text();
+                          bodyData = text;
+                        }
+                      }
+                      let response = null;
+                      if (ext === '.h5ad' || ext === '.h5') {
+                        const formData = new FormData();
+                        formData.append("file", file);
+                        response = await fetch("/api/process_h5ad", { method: "POST", body: formData })
+                      } else {
+
+                        // 调用后端API处理数据
+                        response = await fetch(`${API_BASE}/api/process_data`, {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ data: bodyData }),
+                        });
                       }
 
-                      // 调用后端API处理数据
-                      const response = await fetch(`${API_BASE}/api/process_data`, {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ data: bodyData }),
-                      });
 
                       if (!response.ok) {
                         const text = await response.text();
@@ -437,8 +448,8 @@ export function CodeEditor({
                       });
                     }
                   }}
-                  acceptedFileTypes={['.csv', '.xlsx', '.xls']}
-                  maxFileSize={10 * 1024 * 1024} // 10MB
+                  acceptedFileTypes={['.csv', '.xlsx', '.xls', '.h5ad', '.h5']}
+                  maxFileSize={10 * 1024 * 1024 * 1024} // 1GB
                 />
               ) : (
                 <Editor
@@ -542,35 +553,35 @@ export function CodeEditor({
       </AlertDialog>
 
       {/* Chart Preview Dialog */}
-      <AlertDialog open={chartModalOpen} onOpenChange={setChartModalOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Chart Preview</AlertDialogTitle>
-            <AlertDialogDescription>
-              Preview of the generated visualization. Close to continue.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+<AlertDialog open={chartModalOpen} onOpenChange={setChartModalOpen}>
+  <AlertDialogContent className="max-w-6xl w-full h-[80vh] flex flex-col">
+    <AlertDialogHeader>
+      <AlertDialogTitle>Chart Preview</AlertDialogTitle>
+      <AlertDialogDescription>
+        Preview of the generated visualization. Close to continue.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
 
-          <div className="mt-2">
-            {chartModalD3Code ? (
-              <div className="w-full h-72">
-                <D3Sandbox code={chartModalD3Code} data={chartModalD3Data} height={260} useIframe={false} />
-              </div>
-            ) : chartModalPayload ? (
-              <div className="w-full h-80">
-                <ChartView payload={chartModalPayload} />
-              </div>
-            ) : (
-              <div className="text-sm text-muted-foreground">No chart to preview</div>
-            )}
-          </div>
+    {/* 中间内容，flex-grow 填满剩余空间 */}
+    <div className="mt-2 flex-1 min-h-0">
+      {chartModalD3Code && (
+        <D3Sandbox
+          code={chartModalD3Code}
+          data={chartModalD3Data}
+          height="100%"
+          useIframe={false}
+        />
+      )}
+    </div>
 
-          <AlertDialogFooter>
-            <AlertDialogCancel>Close</AlertDialogCancel>
-            <AlertDialogAction onClick={() => setChartModalOpen(false)}>Done</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+    <AlertDialogFooter>
+      <AlertDialogCancel>Close</AlertDialogCancel>
+      <AlertDialogAction onClick={() => setChartModalOpen(false)}>Done</AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+
+
     </div>
   );
 }

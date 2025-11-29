@@ -1,11 +1,13 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import UploadFile, File
 from pydantic import BaseModel
 import json
 import asyncio
 from typing import List, Optional
 import os
 from dotenv import load_dotenv
+import h5py, pandas as pd, io, json
 
 # Load environment variables from .env file
 # Handle encoding issues gracefully
@@ -144,6 +146,7 @@ async def execute_code(request: ExecuteRequest):
             }],
             "status": "error"
         }
+
 
 
 @app.post("/api/process_data")
@@ -332,8 +335,92 @@ async def process_data(payload: dict):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.post("/api/process_h5ad")
+async def process_h5ad(file: UploadFile = File(...)):
+    import io, pandas as pd, numpy as np, h5py
 
-## Streaming endpoint removed per user request
+    NUMERIC_COLS = [
+        "nCount_Exon","nCount_RNA","nCount_SCT",
+        "nFeature_Exon","nFeature_RNA","nFeature_SCT",
+        "percent.mt"
+    ]
+
+    def safe_cast(value, dtype='str'):
+        if isinstance(value, bytes):
+            value = value.decode('utf-8', errors='ignore')
+        if value is None or value == b'' or value == '':
+            return np.nan if dtype=='float' else ''
+        if dtype=='float':
+            try:
+                return float(value)
+            except:
+                return np.nan
+        return str(value)
+
+    try:
+        buf = await file.read()
+        with h5py.File(io.BytesIO(buf), 'r') as f:
+            obs = f.get('obs')
+            if obs is None or not isinstance(obs, h5py.Group):
+                return {"error": "obs dataset not found or not a Group"}
+
+            columns = []
+            data_dict = {}
+            n_rows = 0
+
+            # 1. 先遍历 obs，处理每列/Group
+            for col in obs:
+                item = obs[col]
+                col_data = []
+
+                if isinstance(item, h5py.Dataset):
+                    col_data = list(item[()])
+                    columns.append(col)
+                elif isinstance(item, h5py.Group):
+                    # 展开 Group: 每个子 dataset 作为新列
+                    for sub in item:
+                        sub_item = item[sub]
+                        if isinstance(sub_item, h5py.Dataset):
+                            sub_col_name = f"{col}.{sub}"
+                            columns.append(sub_col_name)
+                            col_data_sub = list(sub_item[()])
+                            # 补齐长度到当前最大行数
+                            n_rows = max(n_rows, len(col_data_sub))
+                            data_dict[sub_col_name] = col_data_sub
+                    continue  # 已处理子列，不加入 col_data
+                else:
+                    col_data = []
+
+                # 补齐长度
+                n_rows = max(n_rows, len(col_data))
+                data_dict[col] = col_data
+
+            # 2. 补齐所有列长度
+            for col in data_dict:
+                col_len = len(data_dict[col])
+                if col_len < n_rows:
+                    dtype = 'float' if col in NUMERIC_COLS else 'str'
+                    filler = np.nan if dtype=='float' else ''
+                    data_dict[col] += [filler] * (n_rows - col_len)
+
+                # 清洗 bytes/空值
+                dtype = 'float' if col in NUMERIC_COLS else 'str'
+                data_dict[col] = [safe_cast(v, dtype) for v in data_dict[col]]
+
+            df = pd.DataFrame(data_dict)
+
+        # 3. 送给 process_data
+        payload = {
+            "data": {
+                "headers": list(df.columns),
+                "rows": df.values.tolist()
+            }
+        }
+
+        return await process_data(payload)
+
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/api/restart_kernel")
 async def restart_kernel():
