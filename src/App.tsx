@@ -3,6 +3,8 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './componen
 import { WorkflowNavigation } from './components/WorkflowNavigation';
 import { CodeEditor } from './components/CodeEditor';
 import { AIAssistant } from './components/AIAssistant';
+import { Sidebar, SidebarSection } from './components/Sidebar';
+import { SidePanel } from './components/SidePanel';
 import { Toaster } from './components/ui/sonner';
 import { Button } from './components/ui/button';
 import { useDarkMode } from './darkmode';
@@ -42,6 +44,9 @@ function App() {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [code, setCode] = useState<string>('');
   const [outputs, setOutputs] = useState<OutputItem[]>([]);
+  const [activeSection, setActiveSection] = useState<SidebarSection>(null);
+  const [notebooks, setNotebooks] = useState<any[]>([]);
+  const [currentNotebook, setCurrentNotebook] = useState<string>('');
   // const [notebookSteps, setNotebookSteps] = useState<PipelineStep[]>([]);
   // const [codeMap, setCodeMap] = useState<Record<string, string>>({});
   const API_BASE = import.meta.env.VITE_API_BASE || '';
@@ -170,6 +175,102 @@ function App() {
     setOutputs(prev => prev.filter(item => item.id !== id));
   };
 
+  // Load notebooks on mount and when section changes
+  useEffect(() => {
+    const loadNotebooks = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/notebooks`);
+        if (res.ok) {
+          const data = await res.json();
+          setNotebooks(data.notebooks || []);
+          setCurrentNotebook(data.current || '');
+        } else {
+          console.warn('Failed to load notebooks:', res.status, res.statusText);
+        }
+      } catch (error) {
+        console.error('Failed to load notebooks (backend may not be running):', error);
+        // Don't show error to user - backend might not be running yet
+      }
+    };
+    // Only load if notebooks section is active or on initial mount
+    if (activeSection === 'notebooks' || activeSection === null) {
+      loadNotebooks();
+    }
+  }, [API_BASE, activeSection]);
+
+  // Notebook handlers
+  const handleUploadNotebook = async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/api/notebooks/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Failed to upload notebook: ${res.status} ${errorText}`);
+    }
+    // Reload notebooks
+    const data = await fetch(`${API_BASE}/api/notebooks`);
+    if (data.ok) {
+      const notebookData = await data.json();
+      setNotebooks(notebookData.notebooks || []);
+      setCurrentNotebook(notebookData.current || '');
+    }
+  };
+
+  const handleSelectNotebook = async (filename: string) => {
+    const res = await fetch(`${API_BASE}/api/notebooks/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename }),
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Failed to select notebook: ${res.status} ${errorText}`);
+    }
+    setCurrentNotebook(filename);
+    // Reload notebooks to update is_current flags
+    const data = await fetch(`${API_BASE}/api/notebooks`);
+    if (data.ok) {
+      const notebookData = await data.json();
+      setNotebooks(notebookData.notebooks || []);
+    }
+  };
+
+  const handleDeleteNotebook = async (filename: string) => {
+    const res = await fetch(`${API_BASE}/api/notebooks/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Failed to delete notebook: ${res.status} ${errorText}`);
+    }
+    // Reload notebooks
+    const data = await fetch(`${API_BASE}/api/notebooks`);
+    if (data.ok) {
+      const notebookData = await data.json();
+      setNotebooks(notebookData.notebooks || []);
+      setCurrentNotebook(notebookData.current || '');
+    }
+  };
+
+  const handleRefreshNotebooks = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/notebooks`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotebooks(data.notebooks || []);
+        setCurrentNotebook(data.current || '');
+      } else {
+        console.warn('Failed to refresh notebooks:', res.status, res.statusText);
+      }
+    } catch (error) {
+      console.error('Failed to refresh notebooks (backend may not be running):', error);
+      throw error; // Re-throw so NotebookSelector can show error to user
+    }
+  };
+
   // Get the notebook cell index for current workflow step
   // const getCurrentNotebookCellIndex = (): number | null => {
   //   // Find the mapping for current step
@@ -279,20 +380,42 @@ function App() {
         </div>
       </div>
 
-      {/* Three-column layout */}
-      <div className="h-[calc(100vh-3.5rem)]">
-        <ResizablePanelGroup direction="horizontal">
-          {/* Left Panel - Workflow Navigation */}
-          <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-            <WorkflowNavigation
-              currentStep={currentStep}
-              setCurrentStep={setCurrentStep}
-              workflowState={workflowState}
-              updateStepStatus={updateStepStatus}
-              addOutput={addOutput}
-              setCode={setCode}
-            />
-          </ResizablePanel>
+      {/* Main layout with Sidebar and SidePanel */}
+      <div className="h-[calc(100vh-3.5rem)] flex">
+        {/* Sidebar - Fixed width on the far left */}
+        <Sidebar
+          activeSection={activeSection}
+          onSectionChange={setActiveSection}
+        />
+
+        {/* SidePanel - Appears when a section is active */}
+        {activeSection && (
+          <SidePanel
+            activeSection={activeSection}
+            onClose={() => setActiveSection(null)}
+            notebooks={notebooks}
+            currentNotebook={currentNotebook}
+            onUploadNotebook={handleUploadNotebook}
+            onSelectNotebook={handleSelectNotebook}
+            onDeleteNotebook={handleDeleteNotebook}
+            onRefreshNotebooks={handleRefreshNotebooks}
+          />
+        )}
+
+        {/* Three-column layout */}
+        <div className="flex-1">
+          <ResizablePanelGroup direction="horizontal">
+            {/* Left Panel - Workflow Navigation */}
+            <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
+              <WorkflowNavigation
+                currentStep={currentStep}
+                setCurrentStep={setCurrentStep}
+                workflowState={workflowState}
+                updateStepStatus={updateStepStatus}
+                addOutput={addOutput}
+                setCode={setCode}
+              />
+            </ResizablePanel>
 
           <ResizableHandle />
 
@@ -325,7 +448,8 @@ function App() {
               currentCode={code}
             />
           </ResizablePanel>
-        </ResizablePanelGroup>
+          </ResizablePanelGroup>
+        </div>
       </div>
     </div>
   );

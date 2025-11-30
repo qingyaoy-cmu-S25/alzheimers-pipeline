@@ -42,19 +42,19 @@ export const SidePanel: React.FC<SidePanelProps> = ({
   };
 
   return (
-    <div className="w-80 bg-white border-r border-gray-200 flex flex-col h-full shadow-lg">
+    <div className="w-80 bg-card border-r border-border flex flex-col h-full shadow-lg">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
-        <h2 className="text-sm font-semibold text-gray-800">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/50">
+        <h2 className="text-sm font-semibold text-foreground">
           {titles[activeSection]}
         </h2>
         <button
           onClick={onClose}
-          className="p-1 hover:bg-gray-200 rounded transition-colors"
+          className="p-1 hover:bg-muted rounded transition-colors"
           title="Close panel"
           aria-label="Close"
         >
-          <X className="w-4 h-4 text-gray-600" />
+          <X className="w-4 h-4 text-muted-foreground" />
         </button>
       </div>
 
@@ -78,9 +78,9 @@ export const SidePanel: React.FC<SidePanelProps> = ({
         {activeSection === 'settings' && (
           <div className="p-4">
             <div className="text-center py-8">
-              <Settings className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Settings</h3>
-              <p className="text-sm text-gray-600">Settings panel coming soon</p>
+              <Settings className="w-16 h-16 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-lg font-medium text-foreground mb-2">Settings</h3>
+              <p className="text-sm text-muted-foreground">Settings panel coming soon</p>
             </div>
           </div>
         )}
