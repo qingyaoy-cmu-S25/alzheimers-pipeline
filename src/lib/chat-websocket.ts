@@ -19,8 +19,20 @@ export class ChatWebSocket {
   private maxReconnectAttempts = 3;
   private reconnectDelay = 1000;
   private isConnecting = false;
+  private sessionId: string;
 
-  constructor(private endpoint: string) {}
+  constructor(private endpoint: string, sessionId?: string) {
+    // Generate session ID if not provided
+    this.sessionId = sessionId || this.generateSessionId();
+  }
+
+  private generateSessionId(): string {
+    return `session_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+  }
+
+  getSessionId(): string {
+    return this.sessionId;
+  }
 
   connect(callbacks: ChatWebSocketCallbacks = {}): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -33,7 +45,9 @@ export class ChatWebSocket {
       this.callbacks = callbacks;
 
       try {
-        this.ws = new WebSocket(this.endpoint);
+        // Add session_id as query parameter
+        const wsUrl = `${this.endpoint}?session_id=${this.sessionId}`;
+        this.ws = new WebSocket(wsUrl);
         
         this.ws.onopen = () => {
           console.log('WebSocket connected');
@@ -86,6 +100,8 @@ export class ChatWebSocket {
   sendMessage(
     message: string, 
     history: ChatMessage[] = [],
+    cellId?: string,
+    allCodes?: Record<string, string>,
     callbacks: Omit<ChatWebSocketCallbacks, 'onConnect' | 'onDisconnect'> = {}
   ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -98,7 +114,9 @@ export class ChatWebSocket {
 
     const payload = {
       message,
-      history
+      history,
+      cell_id: cellId || null,
+      all_codes: allCodes || null
     };
 
     try {

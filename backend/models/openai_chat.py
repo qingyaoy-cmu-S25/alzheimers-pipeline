@@ -8,7 +8,8 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is required")
 
-openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+# Set the API key for OpenAI 0.28.x
+openai.api_key = OPENAI_API_KEY
 
 def safe_extract_content(chunk) -> Optional[str]:
     """Safely extract content from OpenAI streaming response chunk"""
@@ -22,7 +23,22 @@ def safe_extract_content(chunk) -> Optional[str]:
         print(f"Error extracting content: {e}")
         return None
 
-async def get_openai_streaming_response(messages: List[Dict[str, str]], model: str = "gpt-3.5-turbo"):
+def query_openai_api(instruction: str, inp: str, model: str = "gpt-4o"):
+    """
+    Query OpenAI API (OpenAI 0.28.x compatible)
+    """
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": instruction},
+            {"role": "user", "content": inp}
+        ],
+        temperature=0.7,
+        max_tokens=2000
+    )
+    return response.choices[0].message.content
+
+async def get_openai_streaming_response(messages: List[Dict[str, str]], model: str = "gpt-4o"):
     """
     Get streaming response from OpenAI API (async version)
     
@@ -35,7 +51,8 @@ async def get_openai_streaming_response(messages: List[Dict[str, str]], model: s
     """
     try:
         print(f"Starting OpenAI stream for model: {model}")
-        response = openai_client.chat.completions.create(
+        # OpenAI 0.28.x API
+        response = openai.ChatCompletion.create(
             model=model,
             messages=messages,
             temperature=0.7,
@@ -70,10 +87,22 @@ def format_messages(user_input: str, chat_history: List[Dict] = None) -> List[Di
     """
     messages = []
     
-    # Add system message
+    # Add system message with markdown formatting instructions
     messages.append({
         "role": "system",
-        "content": "You are a helpful AI assistant. Provide clear, accurate, and helpful responses."
+        "content": """You are a helpful AI assistant. Provide clear, accurate, and helpful responses.
+
+Format your responses using markdown for better readability:
+- Use **bold** for emphasis on important terms
+- Use *italics* for subtle emphasis
+- Use bullet points and numbered lists for organization
+- Use `code` for technical terms, function names, or code snippets
+- Use code blocks (```) for multi-line code
+- Use [links](url) for references
+- Use headings (##) to structure longer responses
+- Use tables when presenting structured data
+
+Always structure your responses for maximum clarity and readability."""
     })
     
     # Add chat history if provided
