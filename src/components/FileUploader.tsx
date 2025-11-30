@@ -5,7 +5,6 @@ import { ScrollArea } from './ui/scroll-area';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from './ui/table';
-import * as hdf5 from "h5wasm";
 
 interface FileUploaderProps {
   onFileUpload: (file: File, parsed?: { headers: string[]; rows: string[][] }) => void;
@@ -65,43 +64,6 @@ export function FileUploader({
     const headers = parseRow(lines[0], true);
     const rows = lines.slice(1, 6).map(line => parseRow(line, false));
     return { headers, rows };
-  };
-
-  /** =============================
-   *  h5ad Parser
-   * ============================ */
-  const parseH5AD = async (file: File) => {
-    await hdf5.ready;
-    const buf = await file.arrayBuffer();
-    const f = new hdf5.File(buf, "r");
-
-    // 读取 obs（最常见的 preview 内容）
-    const obs = f.get("obs");
-    if (!obs) {
-      return {
-        headers: ["(empty h5ad)"],
-        rows: [["no obs found"]],
-      };
-    }
-
-    const columns = [...obs.keys];
-    const firstCol = obs.get(columns[0]).to_array();
-    const nRows = firstCol.length;
-
-    const rows: string[][] = [];
-    for (let i = 0; i < Math.min(5, nRows); i++) {
-      const row: string[] = [];
-      for (const col of columns) {
-        const arr = obs.get(col).to_array();
-        row.push(String(arr[i]));
-      }
-      rows.push(row);
-    }
-
-    return {
-      headers: columns,
-      rows,
-    };
   };
 
   /** =============================
