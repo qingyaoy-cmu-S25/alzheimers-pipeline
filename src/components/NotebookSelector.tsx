@@ -89,16 +89,16 @@ export const NotebookSelector: React.FC<NotebookSelectorProps> = ({
   };
 
   return (
-    <div className="p-4 border-b border-gray-200 bg-white">
+    <div className="p-4 border-b border-border bg-card">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center space-x-2">
-          <FileText className="w-5 h-5 text-gray-600" />
-          <span className="text-sm font-medium text-gray-700">Notebook</span>
+          <FileText className="w-5 h-5 text-muted-foreground" />
+          <span className="text-sm font-medium text-foreground">Notebook</span>
         </div>
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={isUploading}
-          className="flex items-center space-x-1 px-3 py-1.5 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="flex items-center space-x-1 px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {isUploading ? (
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -117,7 +117,7 @@ export const NotebookSelector: React.FC<NotebookSelectorProps> = ({
       </div>
 
       {uploadError && (
-        <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
+        <div className="mb-2 p-2 bg-destructive/10 border border-destructive/20 rounded text-xs text-destructive">
           {uploadError}
         </div>
       )}
@@ -125,14 +125,14 @@ export const NotebookSelector: React.FC<NotebookSelectorProps> = ({
       <div className="relative">
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full flex items-center justify-between p-2 bg-gray-50 border border-gray-200 rounded hover:bg-gray-100 transition-colors"
+          className="w-full flex items-center justify-between p-2 bg-muted border border-border rounded hover:bg-muted/80 transition-colors"
         >
           <div className="flex items-center space-x-2 flex-1 min-w-0">
-            <FileText className="w-4 h-4 text-gray-500 flex-shrink-0" />
-            <span className="text-sm text-gray-700 truncate">{currentNotebook}</span>
+            <FileText className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <span className="text-sm text-foreground truncate">{currentNotebook}</span>
           </div>
           <svg
-            className={`w-4 h-4 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
             fill="none"
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -145,9 +145,9 @@ export const NotebookSelector: React.FC<NotebookSelectorProps> = ({
         </button>
 
         {isOpen && (
-          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+          <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-64 overflow-y-auto">
             {notebooks.length === 0 ? (
-              <div className="p-4 text-center text-sm text-gray-500">
+              <div className="p-4 text-center text-sm text-muted-foreground">
                 No notebooks available
               </div>
             ) : (
@@ -155,27 +155,27 @@ export const NotebookSelector: React.FC<NotebookSelectorProps> = ({
                 <div
                   key={notebook.filename}
                   onClick={() => handleSelect(notebook.filename)}
-                  className={`flex items-center justify-between p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${
-                    notebook.is_current ? 'bg-blue-50' : ''
+                  className={`flex items-center justify-between p-3 hover:bg-muted cursor-pointer border-b border-border last:border-b-0 ${
+                    notebook.is_current ? 'bg-primary/10' : ''
                   }`}
                 >
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm font-medium text-gray-700 truncate">
+                      <span className="text-sm font-medium text-foreground truncate">
                         {notebook.filename}
                       </span>
                       {notebook.is_current && (
-                        <Check className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                        <Check className="w-4 h-4 text-primary flex-shrink-0" />
                       )}
                     </div>
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-muted-foreground mt-0.5">
                       {formatSize(notebook.size)} • {formatDate(notebook.modified_at)}
                     </div>
                   </div>
                   {!notebook.is_current && (
                     <button
                       onClick={(e) => handleDelete(notebook.filename, e)}
-                      className="ml-2 p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                      className="ml-2 p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
                       title="Delete notebook"
                     >
                       <Trash2 className="w-4 h-4" />
