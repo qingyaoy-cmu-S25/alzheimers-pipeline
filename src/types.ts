@@ -53,7 +53,7 @@ export interface WorkflowState {
 
 export interface OutputItem {
   id: string;
-  type: 'chart' | 'table' | 'log' | 'error' | 'recommendations' | 'd3';
+  type: 'chart' | 'table' | 'log' | 'error' | 'recommendations' | 'd3' | 'html' | 'image';
   title: string;
   content: any;
   timestamp: Date;
