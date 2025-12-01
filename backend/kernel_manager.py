@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import json
+import os
 import queue
 import threading
 import time
@@ -41,16 +42,36 @@ class JupyterKernelManager:
             self.kernel_id = self.km.kernel_id
             logger.info(f"Kernel started successfully with ID: {self.kernel_id}")
             
+            # Get the backend directory path for workspace access
+            backend_dir = os.path.dirname(os.path.abspath(__file__))
+            workspace_dir = os.path.join(backend_dir, "workspace")
+
             # Execute initial setup code with required libraries
-            setup_code = """
+            setup_code = f"""
 import sys
+import os
+
+# Set up workspace path so code can access files via 'workspace/filename'
+BACKEND_DIR = r'{backend_dir}'
+WORKSPACE_DIR = r'{workspace_dir}'
+
+# Change to backend directory so relative paths work
+os.chdir(BACKEND_DIR)
+
+# Add workspace to path for easy imports
+if WORKSPACE_DIR not in sys.path:
+    sys.path.insert(0, WORKSPACE_DIR)
+
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for server use
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 
-print("Kernel initialized successfully!")
+print(f"Kernel initialized successfully!")
+print(f"Working directory: {{os.getcwd()}}")
+print(f"Workspace directory: {{WORKSPACE_DIR}}")
+print(f"To access files, use: 'workspace/filename' or WORKSPACE_DIR + '/filename'")
 """
             self._execute_code_sync(setup_code)
             
