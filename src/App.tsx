@@ -1,14 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './components/ui/resizable';
-import { WorkflowNavigation } from './components/WorkflowNavigation';
 import { CodeEditor } from './components/CodeEditor';
 import { AIAssistant } from './components/AIAssistant';
 import { Sidebar, SidebarSection } from './components/Sidebar';
 import { SidePanel } from './components/SidePanel';
 import { Toaster } from './components/ui/sonner';
-import { Button } from './components/ui/button';
 import { useDarkMode } from './darkmode';
-import { WorkflowStep, StepStatus, WorkflowState, ChatMessage, OutputItem, PipelineStep } from './types';
+import { ChatMessage, OutputItem, PipelineStep } from './types';
+import { PipelinePanel } from './components/PipelinePanel';
 
 const initialMessages: ChatMessage[] = [
   {
@@ -19,117 +18,91 @@ const initialMessages: ChatMessage[] = [
   }
 ];
 
-// Mapping from WorkflowStep to notebook cell indices (will be loaded dynamically)
-// This maps the fixed workflow steps to notebook cells
-const workflowStepMapping: Record<WorkflowStep, number | null> = {
-  environment: null,
-  import: null,
-  qc: null,
-  visualization: null,
-  modeling: null,
-  export: null,
-};
-
 function App() {
   const { isDark, toggleDarkMode } = useDarkMode();
-  const [currentStep, setCurrentStep] = useState<WorkflowStep>('environment');
-  const [workflowState, setWorkflowState] = useState<WorkflowState>({
-    environment: 'pending',
-    import: 'pending',
-    qc: 'pending',
-    visualization: 'pending',
-    modeling: 'pending',
-    export: 'pending',
-  });
+  // Dynamic steps from notebook
+  const [steps, setSteps] = useState<PipelineStep[]>([]);
+  const [currentStepId, setCurrentStepId] = useState<string | null>(null);
+  const [initialCodes, setInitialCodes] = useState<Record<string, string>>({});
+
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [code, setCode] = useState<string>('');
   const [outputs, setOutputs] = useState<OutputItem[]>([]);
   const [activeSection, setActiveSection] = useState<SidebarSection>(null);
   const [notebooks, setNotebooks] = useState<any[]>([]);
   const [currentNotebook, setCurrentNotebook] = useState<string>('');
-  // const [notebookSteps, setNotebookSteps] = useState<PipelineStep[]>([]);
-  // const [codeMap, setCodeMap] = useState<Record<string, string>>({});
+  const [notebookVersion, setNotebookVersion] = useState<number>(0);
+  const [systemInfo, setSystemInfo] = useState<{
+    cpu?: { name: string; cores: number; threads: number };
+    memory?: { total_gb: number; available_gb: number; used_percent: number };
+    gpu?: { name: string; memory_mb?: number } | null;
+  } | null>(null);
   const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-  // // Load notebook cells and map them to workflow steps
-  // useEffect(() => {
-  //   // const fetchNotebookSteps = async () => {
-  //   //   try {
-  //   //     const res = await fetch(`${API_BASE}/api/notebook/cells`);
-  //   //     if (!res.ok) throw new Error('Failed to load notebook steps');
-  //   //     const data = await res.json();
-  //   //     const loadedSteps: PipelineStep[] = (data.steps || []).map((s: any) => ({
-  //   //       id: `step-${s.stepNumber}`,
-  //   //       title: s.title,
-  //   //       description: s.description,
-  //   //       status: 'pending' as const,
-  //   //       notebookCellIndex: s.index,
-  //   //     }));
-  //   //     setNotebookSteps(loadedSteps);
+  // Load steps dynamically from backend (current notebook)
+  const fetchSteps = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/notebook/cells`);
+      if (!res.ok) throw new Error('Failed to load notebook steps');
+      const data = await res.json();
+      const loadedSteps: PipelineStep[] = (data.steps || []).map((s: any) => ({
+        id: `step-${s.stepNumber}`,
+        title: s.title,
+        description: s.description,
+        status: 'pending' as const,
+        notebookCellIndex: s.index,
+      }));
+      setSteps(loadedSteps);
 
-  //   //     // Map workflow steps to notebook cells based on title/description matching
-  //   //     const mapping: Record<WorkflowStep, number | null> = { ...workflowStepMapping };
-        
-  //   //     loadedSteps.forEach((step) => {
-  //   //       const title = step.title.toLowerCase();
-  //   //       const desc = step.description.toLowerCase();
-          
-  //   //       // Smart mapping based on keywords
-  //   //       if ((title.includes('environment') || title.includes('check') || desc.includes('gpu') || desc.includes('memory')) && !mapping.environment) {
-  //   //         mapping.environment = step.notebookCellIndex || null;
-  //   //       } else if ((title.includes('import') || title.includes('load') || title.includes('data') || desc.includes('csv') || desc.includes('h5ad')) && !mapping.import) {
-  //   //         mapping.import = step.notebookCellIndex || null;
-  //   //       } else if ((title.includes('qc') || title.includes('quality') || title.includes('control')) && !mapping.qc) {
-  //   //         mapping.qc = step.notebookCellIndex || null;
-  //   //       } else if ((title.includes('visual') || title.includes('plot') || title.includes('chart') || desc.includes('umap')) && !mapping.visualization) {
-  //   //         mapping.visualization = step.notebookCellIndex || null;
-  //   //       } else if ((title.includes('model') || title.includes('train') || desc.includes('gnn') || desc.includes('neural')) && !mapping.modeling) {
-  //   //         mapping.modeling = step.notebookCellIndex || null;
-  //   //       } else if ((title.includes('export') || title.includes('save') || title.includes('download')) && !mapping.export) {
-  //   //         mapping.export = step.notebookCellIndex || null;
-  //   //       }
-  //   //     });
+      // Always select first step when loading new notebook
+      if (loadedSteps.length > 0) {
+        setCurrentStepId(loadedSteps[0].id);
+      }
 
-  //   //     // Preload all codes
-  //   //     const codeEntries: [string, string][] = await Promise.all(
-  //   //       Object.entries(mapping).map(async ([workflowStep, cellIndex]) => {
-  //   //         if (cellIndex === null) return [workflowStep, ''];
-  //   //         try {
-  //   //           const r = await fetch(`${API_BASE}/api/notebook/cell/${cellIndex}`);
-  //   //           if (!r.ok) return [workflowStep, ''];
-  //   //           const j = await r.json();
-  //   //           return [workflowStep, j.source || ''];
-  //   //         } catch {
-  //   //           return [workflowStep, ''];
-  //   //         }
-  //   //       })
-  //   //     );
-  //   //     const codes = Object.fromEntries(codeEntries);
-  //   //     setCodeMap(codes);
-        
-  //   //     // Set initial code for current step
-  //   //     if (codes[currentStep]) {
-  //   //       setCode(codes[currentStep]);
-  //   //     }
-  //   //   } catch (e) {
-  //   //     console.error('Error loading steps from notebook', e);
-  //   //   }
-  //   // };
-  //   // fetchNotebookSteps();
-  // }, []);
+      // Preload all codes once
+      const codeEntries: [string, string][] = await Promise.all(
+        loadedSteps.map(async (st) => {
+          if (st.notebookCellIndex === undefined) return [st.id, ''];
+          try {
+            const r = await fetch(`${API_BASE}/api/notebook/cell/${st.notebookCellIndex}`);
+            if (!r.ok) return [st.id, ''];
+            const j = await r.json();
+            return [st.id, j.source || ''];
+          } catch {
+            return [st.id, ''];
+          }
+        })
+      );
+      const codes = Object.fromEntries(codeEntries);
+      setInitialCodes(codes);
 
-  // Update code when workflow step changes
-  // useEffect(() => {
-  //   if (codeMap[currentStep]) {
-  //     setCode(codeMap[currentStep]);
-  //   }
-  // }, [currentStep, codeMap]);
+      // Set initial code for first step
+      if (loadedSteps.length > 0 && codes[loadedSteps[0].id]) {
+        setCode(codes[loadedSteps[0].id]);
+      }
+    } catch (e) {
+      console.error('Error loading steps from notebook', e);
+    }
+  }, [API_BASE]); // Removed currentStepId dependency to prevent unnecessary re-renders
 
-  const updateStepStatus = (step: WorkflowStep, status: StepStatus) => {
-    setWorkflowState(prev => ({
-      ...prev,
-      [step]: status,
-    }));
+  // Update code when step changes
+  useEffect(() => {
+    if (currentStepId && initialCodes[currentStepId]) {
+      setCode(initialCodes[currentStepId]);
+    }
+  }, [currentStepId, initialCodes]);
+
+  // Handle step completion - update status
+  const handleStepComplete = (stepId: string, success: boolean) => {
+    setSteps(prev => prev.map(step =>
+      step.id === stepId
+        ? {
+            ...step,
+            status: success ? 'completed' : 'error',
+            executionCount: (step.executionCount || 0) + 1
+          }
+        : step
+    ));
   };
 
   const handleSendMessage = (content: string, role: 'user' | 'assistant' = 'user') => {
@@ -229,13 +202,25 @@ function App() {
       const errorText = await res.text();
       throw new Error(`Failed to select notebook: ${res.status} ${errorText}`);
     }
+
+    // Clear current state before loading new notebook
+    setSteps([]);
+    setInitialCodes({});
+    setCurrentStepId(null);
+    setCode('');
+
     setCurrentNotebook(filename);
+    setNotebookVersion(prev => prev + 1);
+
     // Reload notebooks to update is_current flags
     const data = await fetch(`${API_BASE}/api/notebooks`);
     if (data.ok) {
       const notebookData = await data.json();
       setNotebooks(notebookData.notebooks || []);
     }
+
+    // Reload steps from new notebook
+    await fetchSteps();
   };
 
   const handleDeleteNotebook = async (filename: string) => {
@@ -271,62 +256,34 @@ function App() {
     }
   };
 
-  // Get the notebook cell index for current workflow step
-  // const getCurrentNotebookCellIndex = (): number | null => {
-  //   // Find the mapping for current step
-  //   const step = notebookSteps.find(s => {
-  //     const title = s.title.toLowerCase();
-  //     const desc = s.description.toLowerCase();
-  //     const current = currentStep.toLowerCase();
-      
-  //     if (current === 'environment') {
-  //       return title.includes('environment') || title.includes('check') || desc.includes('gpu') || desc.includes('memory');
-  //     } else if (current === 'import') {
-  //       return title.includes('import') || title.includes('load') || title.includes('data') || desc.includes('csv') || desc.includes('h5ad');
-  //     } else if (current === 'qc') {
-  //       return title.includes('qc') || title.includes('quality') || title.includes('control');
-  //     } else if (current === 'visualization') {
-  //       return title.includes('visual') || title.includes('plot') || title.includes('chart') || desc.includes('umap');
-  //     } else if (current === 'modeling') {
-  //       return title.includes('model') || title.includes('train') || desc.includes('gnn') || desc.includes('neural');
-  //     } else if (current === 'export') {
-  //       return title.includes('export') || title.includes('save') || title.includes('download');
-  //     }
-  //     return false;
-  //   });
-    
-  //   return step?.notebookCellIndex ?? null;
-  // };
-
-  // Convert WorkflowStep to PipelineStep for CodeEditor
-  const getCurrentPipelineStep = (): PipelineStep | null => {
-    
-    // Create a temporary PipelineStep from workflow step
-    const stepLabels: Record<WorkflowStep, { title: string; description: string }> = {
-      environment: { title: 'Environment Check', description: 'GPU/Memory/Package versions' },
-      import: { title: 'Data Import/Preprocessing', description: 'CSV/TSV/Parquet/H5AD' },
-      qc: { title: 'Quality Control', description: 'QC/EDA report generation' },
-      visualization: { title: 'Visualization Wizard', description: 'UMAP/Volcano/Heatmap' },
-      modeling: { title: 'Modeling/Training', description: 'Pipeline templates + hyperparams' },
-      export: { title: 'Export', description: 'Charts/Tables/Reports' },
-    };
-    
-    const label = stepLabels[currentStep];
-    
-    return {
-      id: currentStep,
-      title: label.title,
-      description: label.description,
-      status: workflowState[currentStep] === 'success' ? 'completed' : workflowState[currentStep] === 'error' ? 'error' : workflowState[currentStep] === 'running' ? 'running' : 'pending',
-      // notebookCellIndex: cellIndex,
-    };
+  // Get current step from steps array
+  const getCurrentStep = (): PipelineStep | null => {
+    if (!currentStepId) return null;
+    return steps.find(s => s.id === currentStepId) || null;
   };
 
-  const handleStepComplete = (stepId: string, success: boolean) => {
-    // stepId might be a PipelineStep id or WorkflowStep
-    // Check if it matches current workflow step, otherwise try to find matching workflow step
-    return;
-  };
+  // Load steps when notebook changes
+  useEffect(() => {
+    if (currentNotebook) {
+      fetchSteps();
+    }
+  }, [currentNotebook, notebookVersion]);
+
+  // Fetch system info on mount
+  useEffect(() => {
+    const fetchSystemInfo = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/system/info`);
+        if (res.ok) {
+          const data = await res.json();
+          setSystemInfo(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch system info:', error);
+      }
+    };
+    fetchSystemInfo();
+  }, [API_BASE]);
 
   return (
     <div className="h-screen w-screen bg-background overflow-hidden">
@@ -342,9 +299,21 @@ function App() {
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>GPU: RTX 4090</span>
-            <span>•</span>
-            <span>Memory: 32GB</span>
+            {systemInfo ? (
+              <>
+                {systemInfo.gpu && (
+                  <>
+                    <span>GPU: {systemInfo.gpu.name}</span>
+                    <span>•</span>
+                  </>
+                )}
+                <span>Memory: {systemInfo.memory?.total_gb || '?'}GB</span>
+                <span>•</span>
+                <span>CPU: {systemInfo.cpu?.cores || '?'} cores</span>
+              </>
+            ) : (
+              <span>Loading system info...</span>
+            )}
           </div>
         </div>
       </div>
@@ -374,51 +343,48 @@ function App() {
         )}
 
         {/* Three-column layout */}
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <ResizablePanelGroup direction="horizontal">
-            {/* Left Panel - Workflow Navigation */}
-            <ResizablePanel defaultSize={20} minSize={15} maxSize={30}>
-              <WorkflowNavigation
-                currentStep={currentStep}
-                setCurrentStep={setCurrentStep}
-                workflowState={workflowState}
-                updateStepStatus={updateStepStatus}
-                addOutput={addOutput}
-                setCode={setCode}
+            {/* Left Panel - Pipeline Steps (dynamic from notebook) */}
+            <ResizablePanel id="pipeline-panel" order={1} defaultSize={20} minSize={15} maxSize={25}>
+              <PipelinePanel
+                steps={steps}
+                currentStepId={currentStepId}
+                onStepClick={(stepId) => setCurrentStepId(stepId)}
               />
             </ResizablePanel>
 
-          <ResizableHandle />
+            <ResizableHandle withHandle />
 
-          {/* Middle Panel - Code & Output */}
-          <ResizablePanel defaultSize={50} minSize={30}>
-            <CodeEditor
-              currentStep={getCurrentPipelineStep()}
-              code={code}
-              setCode={setCode}
-              outputs={outputs}
-              onStepComplete={handleStepComplete}
-              onCodeChange={(code) => setCode(code)}
-              onSendErrorToChat={handleSendErrorToChat}
-              addOutput={addOutput}
-              toggleReportItem={toggleReportItem}
-              removeOutput={removeOutput}
-            />
-          </ResizablePanel>
+            {/* Middle Panel - Code & Output */}
+            <ResizablePanel id="code-panel" order={2} defaultSize={50} minSize={30} maxSize={60}>
+              <CodeEditor
+                currentStep={getCurrentStep()}
+                code={code}
+                setCode={setCode}
+                outputs={outputs}
+                onStepComplete={handleStepComplete}
+                onCodeChange={(newCode) => setCode(newCode)}
+                onSendErrorToChat={handleSendErrorToChat}
+                addOutput={addOutput}
+                toggleReportItem={toggleReportItem}
+                removeOutput={removeOutput}
+              />
+            </ResizablePanel>
 
-          <ResizableHandle />
+            <ResizableHandle withHandle />
 
-          {/* Right Panel - AI Assistant */}
-          <ResizablePanel defaultSize={30} minSize={20} maxSize={40}>
-            <AIAssistant
-              currentStep={getCurrentPipelineStep()}
-              outputs={outputs}
-              code={code}
-              messages={messages}
-              onSendMessage={handleSendMessage}
-              currentCode={code}
-            />
-          </ResizablePanel>
+            {/* Right Panel - AI Assistant */}
+            <ResizablePanel id="ai-panel" order={3} defaultSize={30} minSize={20} maxSize={40}>
+              <AIAssistant
+                currentStep={getCurrentStep()}
+                outputs={outputs}
+                code={code}
+                messages={messages}
+                onSendMessage={handleSendMessage}
+                currentCode={code}
+              />
+            </ResizablePanel>
           </ResizablePanelGroup>
         </div>
       </div>
