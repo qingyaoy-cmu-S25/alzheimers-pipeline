@@ -39,6 +39,38 @@ CURRENT_NOTEBOOK = "colab.ipynb"  # Default notebook
 # Ensure workspace directory exists
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
 
+def sync_azure_files_to_local():
+    """Sync all files from Azure uploads container to local workspace"""
+    if not USE_AZURE_STORAGE or blob_manager is None:
+        return
+
+    try:
+        print("Syncing Azure files to local workspace...")
+        files = blob_manager.list_files()
+
+        for file_info in files:
+            filename = file_info['filename']
+            local_path = os.path.join(WORKSPACE_DIR, filename)
+
+            # Check if file already exists locally with same size
+            if os.path.exists(local_path):
+                local_size = os.path.getsize(local_path)
+                if local_size == file_info['size']:
+                    continue  # Skip if same size
+
+            # Download from Azure
+            try:
+                content = blob_manager.download_file(filename)
+                with open(local_path, 'wb') as f:
+                    f.write(content)
+                print(f"  ✓ Synced: {filename}")
+            except Exception as e:
+                print(f"  ✗ Failed to sync {filename}: {e}")
+
+        print(f"Sync complete. {len(files)} files in Azure uploads container.")
+    except Exception as e:
+        print(f"Warning: Failed to sync Azure files: {e}")
+
 # Initialize Azure Blob Manager
 try:
     blob_manager = get_blob_manager()
@@ -55,6 +87,9 @@ try:
             print(f"✓ Uploaded default notebook '{CURRENT_NOTEBOOK}' to Azure Blob Storage")
         except Exception as upload_error:
             print(f"⚠ Warning: Could not upload default notebook to Azure: {upload_error}")
+
+    # Sync Azure files to local workspace on startup
+    sync_azure_files_to_local()
 
 except Exception as e:
     blob_manager = None
@@ -477,6 +512,64 @@ async def kernel_status():
         return {"status": "error", "message": str(e)}
 
 
+@app.get("/api/system/info")
+async def get_system_info():
+    """Get system information (CPU, Memory, GPU)"""
+    import platform
+    import psutil
+
+    info = {
+        "cpu": {
+            "name": platform.processor() or "Unknown CPU",
+            "cores": psutil.cpu_count(logical=False) or 0,
+            "threads": psutil.cpu_count(logical=True) or 0,
+            "usage_percent": psutil.cpu_percent(interval=0.1),
+        },
+        "memory": {
+            "total_gb": round(psutil.virtual_memory().total / (1024**3), 1),
+            "available_gb": round(psutil.virtual_memory().available / (1024**3), 1),
+            "used_percent": psutil.virtual_memory().percent,
+        },
+        "gpu": None,
+        "platform": {
+            "system": platform.system(),
+            "release": platform.release(),
+            "python_version": platform.python_version(),
+        }
+    }
+
+    # Try to detect GPU
+    try:
+        import subprocess
+        # Try nvidia-smi for NVIDIA GPUs
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            gpu_info = result.stdout.strip().split(",")
+            info["gpu"] = {
+                "name": gpu_info[0].strip(),
+                "memory_mb": int(gpu_info[1].strip()) if len(gpu_info) > 1 else None,
+            }
+    except Exception:
+        # No NVIDIA GPU or nvidia-smi not available
+        pass
+
+    # If no NVIDIA GPU, try to detect Apple Silicon
+    if info["gpu"] is None and platform.system() == "Darwin":
+        try:
+            import subprocess
+            result = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"],
+                                    capture_output=True, text=True, timeout=5)
+            if "Apple" in result.stdout:
+                info["gpu"] = {"name": "Apple Silicon (integrated)", "memory_mb": None}
+        except Exception:
+            pass
+
+    return info
+
+
 # -----------------------------
 # Notebook helper endpoints
 # -----------------------------
@@ -885,6 +978,45 @@ async def list_workspace_files():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to list files: {str(e)}")
+
+
+@app.post("/api/workspace/sync")
+async def sync_workspace_files():
+    """Sync all files from Azure to local workspace"""
+    try:
+        if not USE_AZURE_STORAGE:
+            return {"status": "skipped", "message": "Azure storage not configured"}
+
+        sync_azure_files_to_local()
+        return {"status": "success", "message": "Files synced from Azure"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+
+@app.get("/api/workspace/download/{filename}")
+async def download_workspace_file(filename: str):
+    """Download a specific file from Azure to local workspace"""
+    try:
+        if USE_AZURE_STORAGE:
+            # Download from Azure
+            try:
+                content = blob_manager.download_file(filename)
+                local_path = os.path.join(WORKSPACE_DIR, filename)
+                with open(local_path, 'wb') as f:
+                    f.write(content)
+                return {"status": "success", "filename": filename, "path": local_path}
+            except FileNotFoundError:
+                raise HTTPException(status_code=404, detail=f"File not found in Azure: {filename}")
+        else:
+            # Check local
+            local_path = os.path.join(WORKSPACE_DIR, filename)
+            if os.path.exists(local_path):
+                return {"status": "success", "filename": filename, "path": local_path}
+            raise HTTPException(status_code=404, detail=f"File not found: {filename}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
 
 
 @app.delete("/api/workspace/{filename}")
