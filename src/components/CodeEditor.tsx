@@ -49,13 +49,16 @@ const convertCellOutputToOutputItem = (output: CellOutput, index: number): Omit<
       };
     case 'image':
       return {
-        type: 'chart',
+        type: 'image',
         title: 'Plot Output',
-        content: `data:image/${output.format || 'png'};base64,${output.content}`,
+        content: {
+          data: output.content,
+          format: output.format || 'png',
+        },
       };
     case 'html':
       return {
-        type: 'log',
+        type: 'html',
         title: 'HTML Output',
         content: output.content,
       };
@@ -389,7 +392,7 @@ export function CodeEditor({
                         response = await fetch("/api/process_h5ad", { method: "POST", body: formData })
                       } else {
 
-                        // 调用后端API处理数据
+                        
                         response = await fetch(`${API_BASE}/api/process_data`, {
                           method: 'POST',
                           headers: {
@@ -562,7 +565,7 @@ export function CodeEditor({
       </AlertDialogDescription>
     </AlertDialogHeader>
 
-    {/* 中间内容，flex-grow 填满剩余空间 */}
+    {/* */}
     <div className="mt-2 flex-1 min-h-0">
       {chartModalD3Code && (
         <D3Sandbox

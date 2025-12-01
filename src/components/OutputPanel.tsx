@@ -1,7 +1,6 @@
 import { OutputItem } from '../types';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { ScrollArea } from './ui/scroll-area';
 import { Badge } from './ui/badge';
 import { 
   FileText, 
@@ -50,6 +49,12 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerat
         return <AlertCircle className="w-4 h-4" />;
       case 'recommendations':
         return <Lightbulb className="w-4 h-4 text-yellow-500" />;
+      case 'html':
+        return <FileText className="w-4 h-4 text-blue-500" />;
+      case 'image':
+        return <BarChart3 className="w-4 h-4 text-green-500" />;
+      default:
+        return <Terminal className="w-4 h-4" />;
     }
   };
 
@@ -57,7 +62,7 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerat
     switch (output.type) {
       case 'log':
         return (
-          <pre className="text-xs font-mono bg-muted p-3 rounded whitespace-pre-wrap">
+          <pre className="text-xs font-mono bg-muted p-3 rounded whitespace-pre-wrap overflow-auto max-h-64 break-words">
             {output.content}
           </pre>
         );
@@ -112,18 +117,44 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerat
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Error</AlertTitle>
-              <AlertDescription>{output.content.message}</AlertDescription>
+              <AlertDescription className="break-words">{output.content.message}</AlertDescription>
             </Alert>
-            <pre className="text-xs font-mono bg-muted p-3 rounded overflow-x-auto">
-              {output.content.stack}
-            </pre>
-            {/* <Button variant="outline" size="sm" className="w-full">
-              <Sparkles className="w-4 h-4 mr-2" />
-              Explain & Fix
-            </Button> */}
+            {output.content.stack && (
+              <pre className="text-xs font-mono bg-muted p-3 rounded overflow-auto max-h-48 whitespace-pre-wrap break-words">
+                {output.content.stack}
+              </pre>
+            )}
           </div>
         );
       
+      case 'html':
+        return (
+          <div
+            className="border rounded bg-gray-50 overflow-auto max-h-48 max-w-full"
+            style={{
+              display: 'block',
+              overflowX: 'auto',
+              overflowY: 'auto',
+            }}
+          >
+            <div
+              className="p-2 text-xs [&_table]:border-collapse [&_th]:bg-gray-200 [&_th]:px-2 [&_th]:py-1 [&_th]:border [&_th]:border-gray-300 [&_th]:text-left [&_th]:font-semibold [&_td]:bg-white [&_td]:px-2 [&_td]:py-1 [&_td]:border [&_td]:border-gray-300 [&_tr:hover_td]:bg-blue-50"
+              dangerouslySetInnerHTML={{ __html: output.content }}
+            />
+          </div>
+        );
+
+      case 'image':
+        return (
+          <div className="bg-white p-4 rounded-md text-center">
+            <img
+              src={`data:image/${output.content.format || 'png'};base64,${output.content.data}`}
+              alt={output.title || 'Plot output'}
+              className="max-w-full h-auto mx-auto"
+            />
+          </div>
+        );
+
       case 'recommendations':
         return (
           <div className="space-y-4">
@@ -212,14 +243,14 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerat
       </div>
 
       {/* Outputs */}
-      <ScrollArea className="flex-1">
-        <div className="p-4 space-y-4 min-h-0 overflow-auto">
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-4 space-y-4">
           {outputs.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
               No output yet
             </div>
           ) : (
-            outputs.map((output) => (
+            [...outputs].reverse().map((output) => (
               <Card key={output.id} className="p-4">
                 {/* Output header */}
                 <div className="flex items-start justify-between mb-3">
@@ -274,7 +305,7 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerat
             ))
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 }
