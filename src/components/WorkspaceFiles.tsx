@@ -87,28 +87,28 @@ export const WorkspaceFiles: React.FC = () => {
     const ext = filename.split('.').pop()?.toLowerCase();
     switch (ext) {
       case 'py':
-        return <FileCode className="w-4 h-4 text-blue-500" />;
+        return <FileCode className="w-4 h-4 text-blue-500 dark:text-blue-400" />;
       case 'csv':
       case 'json':
       case 'txt':
-        return <FileText className="w-4 h-4 text-green-500" />;
+        return <FileText className="w-4 h-4 text-green-500 dark:text-green-400" />;
       default:
-        return <File className="w-4 h-4 text-gray-400" />;
+        return <File className="w-4 h-4 text-muted-foreground" />;
     }
   };
 
   return (
-    <div className="h-full flex flex-col bg-white">
+    <div className="h-full flex flex-col bg-card">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-border">
         <div className="flex items-center justify-between mb-3">
           <button
             onClick={fetchFiles}
-            className="p-1 hover:bg-gray-100 rounded transition-colors"
+            className="p-1 hover:bg-muted rounded transition-colors"
             title="Refresh"
             disabled={uploading}
           >
-            <RefreshCw className={`w-4 h-4 text-gray-600 ${uploading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 text-muted-foreground ${uploading ? 'animate-spin' : ''}`} />
           </button>
         </div>
 
@@ -117,8 +117,8 @@ export const WorkspaceFiles: React.FC = () => {
           flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium
           transition-colors cursor-pointer
           ${uploading
-            ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            : 'bg-green-600 text-white hover:bg-green-700'
+            ? 'bg-muted text-muted-foreground cursor-not-allowed'
+            : 'bg-primary text-primary-foreground hover:bg-primary/90'
           }
         `}>
           <Upload className="w-4 h-4" />
@@ -134,15 +134,15 @@ export const WorkspaceFiles: React.FC = () => {
             disabled={uploading}
           />
         </label>
-        <p className="text-xs text-gray-500 mt-2">
+        <p className="text-xs text-muted-foreground mt-2">
           Upload CSV, JSON, Python scripts, or any files
         </p>
       </div>
 
       {/* Error Message */}
       {error && (
-        <div className="mx-4 mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-          <p className="text-sm text-red-800">{error}</p>
+        <div className="mx-4 mt-4 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
+          <p className="text-sm text-destructive">{error}</p>
         </div>
       )}
 
@@ -150,34 +150,34 @@ export const WorkspaceFiles: React.FC = () => {
       <div className="flex-1 overflow-y-auto">
         {files.length === 0 ? (
           <div className="p-8 text-center">
-            <Folder className="w-16 h-16 mx-auto mb-3 text-gray-300" />
-            <p className="text-sm text-gray-600 mb-1">No files uploaded yet</p>
-            <p className="text-xs text-gray-500">Upload datasets, scripts, or any files to access them in notebooks</p>
+            <Folder className="w-16 h-16 mx-auto mb-3 text-muted-foreground/50" />
+            <p className="text-sm text-muted-foreground mb-1">No files uploaded yet</p>
+            <p className="text-xs text-muted-foreground/80">Upload datasets, scripts, or any files to access them in notebooks</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-border">
             {files.map((file) => (
               <div
                 key={file.filename}
-                className="p-3 hover:bg-gray-50 flex items-center justify-between group transition-colors"
+                className="p-3 hover:bg-muted flex items-center justify-between group transition-colors"
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   {getFileIcon(file.filename)}
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 truncate" title={file.filename}>
+                    <p className="text-sm font-medium text-foreground truncate" title={file.filename}>
                       {file.filename}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-muted-foreground">
                       {formatFileSize(file.size)}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => handleDelete(file.filename)}
-                  className="p-1 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="p-1 hover:bg-destructive/10 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Delete"
                 >
-                  <Trash2 className="w-4 h-4 text-red-600" />
+                  <Trash2 className="w-4 h-4 text-destructive" />
                 </button>
               </div>
             ))}
@@ -187,8 +187,8 @@ export const WorkspaceFiles: React.FC = () => {
 
       {/* Footer Info */}
       {files.length > 0 && (
-        <div className="p-3 border-t border-gray-200 bg-gray-50">
-          <p className="text-xs text-gray-600">
+        <div className="p-3 border-t border-border bg-muted/50">
+          <p className="text-xs text-muted-foreground">
             {files.length} file{files.length !== 1 ? 's' : ''} in workspace
           </p>
         </div>

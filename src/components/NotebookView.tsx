@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CellOutput, PipelineStep } from '../types';
 import { RotateCcw, AlertCircle } from 'lucide-react';
+import Editor from '@monaco-editor/react';
+import { useDarkMode } from '../darkmode';
 
 // Define code templates corresponding to each pipeline step
 const stepCodeTemplates: Record<string, string> = {
@@ -212,13 +214,31 @@ interface NotebookViewProps {
   currentNotebook?: string; // Add prop to track current notebook
 }
 
-export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange, onSendErrorToChat, initialCodes, currentNotebook }) => {
+export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepComplete, onCodeChange, onSendErrorToChat, initialCodes }) => {
+  const { isDark } = useDarkMode();
+  const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
   const [cellStates, setCellStates] = useState<Record<string, {
     executed: boolean;
     executing: boolean;
     outputs: CellOutput[];
     executionTime?: number; // Add execution time tracking
   }>>({});
+  
+  // Update theme when isDark changes
+  useEffect(() => {
+    if (monacoRef.current) {
+      const theme = isDark ? 'vs-dark' : 'custom-white';
+      // Use monaco.editor.setTheme() directly - this updates all editors
+      try {
+        const monaco = monacoRef.current;
+        monaco.editor.setTheme(theme);
+        console.log('NotebookView Monaco theme updated to:', theme, 'isDark:', isDark);
+      } catch (error) {
+        console.error('Error setting Monaco theme:', error);
+      }
+    }
+  }, [isDark]);
 
   const [editableCode, setEditableCode] = useState<Record<string, string>>({});
   // Terminal streaming removed; keep simple aggregated output
@@ -682,31 +702,57 @@ export const NotebookView: React.FC<NotebookViewProps> = ({ currentStep, onStepC
                   </span>
                 </div>
               )}
-              <textarea
-                value={code}
-                onChange={(e) => handleCodeChange(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.ctrlKey && e.key === 'Enter') {
-                    e.preventDefault();
-                    runCurrentStep();
-                  }
-                }}
-                className="w-full h-[500px] bg-gray-50 p-4 rounded-md font-mono text-sm text-gray-800 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 leading-relaxed"
-                placeholder="Write any Python code here... (Ctrl+Enter to run)
-
-Examples:
-- import matplotlib.pyplot as plt
-- plt.plot([1,2,3,4])
-- plt.show()  # Images will display automatically
-- import pandas as pd
-- import numpy as np"
-                spellCheck={false}
-                style={{
-                  fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-                  lineHeight: '1.5',
-                  tabSize: 4
-                }}
-              />
+              <div className="border rounded-md overflow-hidden" style={{ height: '500px' }}>
+                <Editor
+                  key={`notebook-theme-${isDark ? 'dark' : 'light'}`}
+                  height="100%"
+                  language="python"
+                  value={code}
+                  onChange={(value) => handleCodeChange(value || '')}
+                  theme={isDark ? 'vs-dark' : 'custom-white'}
+                  options={{
+                    minimap: { enabled: true },
+                    fontSize: 14,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    tabSize: 4,
+                    wordWrap: 'on',
+                    padding: { top: 16, bottom: 16 },
+                  }}
+                  beforeMount={(monaco) => {
+                    // Define custom white theme - ensure it's always defined
+                    try {
+                      monaco.editor.defineTheme('custom-white', {
+                        base: 'vs',
+                        inherit: true,
+                        rules: [],
+                        colors: {
+                          'editor.background': '#ffffff',
+                          'editor.foreground': '#000000',
+                        }
+                      });
+                    } catch (error) {
+                      // Theme might already be defined
+                    }
+                  }}
+                  onMount={(editor, monaco) => {
+                    editorRef.current = editor;
+                    monacoRef.current = monaco;
+                    // Set theme after mount using the current isDark value
+                    const theme = isDark ? 'vs-dark' : 'custom-white';
+                    monaco.editor.setTheme(theme);
+                    console.log('Notebook editor mounted with theme:', theme, 'isDark:', isDark);
+                    // Add Ctrl+Enter keyboard shortcut to run code
+                    editor.addCommand(
+                      monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+                      () => {
+                        runCurrentStep();
+                      }
+                    );
+                  }}
+                />
+              </div>
             </div>
           </div>
 

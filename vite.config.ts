@@ -14,4 +14,7 @@ export default defineConfig({
       // WebSocket streaming removed
     },
   },
+  optimizeDeps: {
+    include: ['d3'],
+  },
 })

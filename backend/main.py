@@ -1,12 +1,30 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import UploadFile, File
 from pydantic import BaseModel
 import json
 import asyncio
 from typing import List, Optional
 import os
-import shutil
-from datetime import datetime
+from dotenv import load_dotenv
+import h5py, pandas as pd, io, json
+
+# Load environment variables from .env file
+# Handle encoding issues gracefully
+try:
+    load_dotenv(encoding='utf-8')
+except UnicodeDecodeError:
+    # If UTF-8 fails, try without specifying encoding (let dotenv handle it)
+    try:
+        load_dotenv()
+    except Exception:
+        # If .env file doesn't exist or has issues, continue without it
+        # Environment variables can still be set via system/env
+        pass
+except Exception:
+    # Any other error loading .env - continue without it
+    pass
+
 from models.openai_chat import get_openai_streaming_response, format_messages
 from kernel_manager import get_kernel_manager
 from storage.azure_blob_manager import get_blob_manager
@@ -165,7 +183,279 @@ async def execute_code(request: ExecuteRequest):
         }
 
 
-## Streaming endpoint removed per user request
+
+@app.post("/api/process_data")
+async def process_data(payload: dict):
+    """Receive CSV text in `payload['data']`, parse it, generate a preview and call OpenAI to recommend 3 charts.
+
+    Expected input JSON: { "data": "<csv content>" }
+    Returns JSON: { dataInfo, preview, recommendations }
+    """
+    import io
+    import pandas as pd
+    try:
+        data = payload.get("data") if isinstance(payload, dict) else None
+        if data is None:
+            raise ValueError("Missing 'data' in request body")
+
+        # Support multiple input formats from frontend:
+        # 1) raw CSV text (string)
+        # 2) parsed object { headers: string[], rows: string[][] } (from FileUploader.parseCSV)
+        # 3) list of records (list[dict])
+        df = None
+        if isinstance(data, str):
+            # raw CSV text
+            csv_text = data
+            print("csv_text received:", csv_text[:100])  # Print first 100 chars for debug
+            # Try to read CSV into pandas, allow flexible separators
+            try:
+                df = pd.read_csv(io.StringIO(csv_text), sep=None, engine='python')
+            except Exception:
+                # fallback to comma
+                df = pd.read_csv(io.StringIO(csv_text))
+        elif isinstance(data, dict) and 'headers' in data and 'rows' in data:
+            # Parsed format from frontend FileUploader: headers + rows (array of arrays)
+            headers = data.get('headers') or []
+            rows = data.get('rows') or []
+            # Build list of records
+            records = []
+            for r in rows:
+                # If row is shorter/longer than headers, align accordingly
+                row_dict = {headers[i]: (r[i] if i < len(r) else None) for i in range(len(headers))}
+                records.append(row_dict)
+            df = pd.DataFrame.from_records(records, columns=headers)
+        elif isinstance(data, list):
+            # list of records
+            df = pd.DataFrame.from_records(data)
+        else:
+            raise ValueError("Unrecognized 'data' format. Expect raw CSV text or parsed {headers, rows} or list of records")
+
+        # Build data summary
+        n_rows, n_cols = df.shape
+        columns = list(df.columns.astype(str))
+        dtypes = {col: str(dtype) for col, dtype in df.dtypes.items()}
+
+        # Simple type counts
+        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        categorical_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+
+        data_info = {
+            'samples': int(n_rows),
+            'features': int(n_cols),
+            'columns': columns,
+            'dtypes': dtypes,
+            'numeric_columns': numeric_cols,
+            'categorical_columns': categorical_cols,
+            'type': 'table'
+        }
+
+        # Preview first 5 rows as records (stringify safe)
+        preview = df.head(5).astype(str).to_dict(orient='records')
+
+        # If mock mode enabled, return fake recommendations
+        if os.getenv('OPENAI_MOCK', '').lower() in ['1', 'true', 'yes']:
+            recommendations = [
+                { 'name': 'Bar Chart', 'confidence': 90, 'reason': 'Categorical distribution', 'fields': [columns[0]] },
+                { 'name': 'Scatter Plot', 'confidence': 80, 'reason': 'Numeric correlation', 'fields': numeric_cols[:2] },
+                { 'name': 'Box Plot', 'confidence': 75, 'reason': 'Summary of numeric spread', 'fields': numeric_cols[:1] },
+            ]
+
+            return { 'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations }
+
+        # Build prompt for OpenAI to return 3 chart recommendations in JSON
+        sample_cols = ', '.join(columns[:10])
+        user_prompt = (
+            f"You are a data visualization expert. Given the following dataset:\n"
+            f"Rows: {n_rows}, Columns: {n_cols}. Columns: {sample_cols}.\n"
+            f"Numeric columns: {numeric_cols}. Categorical columns: {categorical_cols}.\n"
+            f"\n"
+            f"Sample data preview:\n{json.dumps(preview[:3], indent=2)}\n"
+            f"\n"
+            f"Please recommend exactly 3 appropriate chart types for this data.\n"
+            f"\n"
+            f"For EACH recommendation, return a JSON object with EXACTLY these keys:\n"
+            f"- name: (string) short human-readable chart title\n"
+            f"- confidence: (integer 0-100) confidence that this chart fits the data\n"
+            f"- reason: (string) brief 1-2 sentence rationale\n"
+            f"- fields: (array of strings) column names the chart should use (e.g., ['Variable', 'IRR'])\n"
+            f"- d3_js: (string) D3 v7 JavaScript code (can be IIFE or plain statements) that renders the chart into element with id='sandbox'.\n"
+            f"\n"
+            f"IMPORTANT CONSTRAINTS for d3_js:\n"
+            f"1. Code will be executed in an iframe with D3 v7 loaded globally.\n"
+            f"2. The variable 'data' (array of objects) is provided globally before your code runs.\n"
+            f"3. A container <div id='sandbox'></div> exists. Use d3.select('#sandbox') to access it, NOT '#root'.\n"
+            f"4. If code is wrapped in IIFE: (function(){{ ... }})(); - that's fine, it will execute.\n"
+            f"5. If code is plain statements - that's also fine, no wrapper needed.\n"
+            f"6. Handle string numbers: parseFloat(String(value).replace(/,/g, ''))\n"
+            f"7. Clear sandbox first: d3.select('#sandbox').selectAll('*').remove();\n"
+            f"8. Use D3 v7 patterns: .join(), .enter(), .exit() properly.\n"
+            f"9. Build proper scales, axes, margins for a professional chart.\n"
+            f"10. Use visual encoding: colors, sizes, positions for different dimensions.\n"
+            f"\n"
+            f"Return result as valid JSON ONLY:\n"
+            f"- Option 1: top-level array: [{{ ... }}, {{ ... }}, {{ ... }}]\n"
+            f"- Option 2: object with key: {{ \"recommendations\": [{{ ... }}, ...] }}\n"
+            f"\n"
+            f"CRITICAL: NO markdown, NO code blocks, NO backticks, NO extra text. ONLY valid JSON parseable by JSON.parse()."
+        )
+
+        messages = format_messages(user_prompt, [])
+
+        # Collect streamed response
+        response_chunks = []
+        async for chunk in get_openai_streaming_response(messages):
+            if chunk:
+                response_chunks.append(chunk)
+
+        model_text = "".join(response_chunks).strip()
+
+        # Try to parse JSON from model_text
+        import re, json as _json
+        try:
+            # extract first JSON-like block
+            m = re.search(r"\{.*\}|\[.*\]", model_text, flags=re.S)
+            if not m:
+                # no JSON-like block found, return raw text
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+
+            json_text = m.group(0)
+            parsed = None
+
+            # First try strict JSON
+            try:
+                parsed = _json.loads(json_text)
+            except Exception:
+                # Fallback: try Python literal eval (handles single quotes)
+                try:
+                    import ast
+                    parsed = ast.literal_eval(json_text)
+                except Exception:
+                    parsed = None
+
+            if parsed is None:
+                # Could not parse JSON or Python literal -> return raw model text
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+
+            # If parsed is a dict containing recommendations key
+            if isinstance(parsed, dict) and 'recommendations' in parsed:
+                recommendations = parsed['recommendations']
+                print(f"[DEBUG] OpenAI returned {len(recommendations)} recommendations")
+                
+                # Just pass through the recommendations as-is (OpenAI should provide d3_js)
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
+
+            # If parsed is a dict that looks like an API error (common from OpenAI/Azure):
+            # {"error": {"message": ..., "type": ..., "code": ...}}
+            if isinstance(parsed, dict) and 'error' in parsed:
+                err = parsed.get('error') or {}
+                model_error = {
+                    'code': err.get('code') or err.get('status') or None,
+                    'type': err.get('type') or None,
+                    'message': err.get('message') or str(err)
+                }
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text, 'model_error': model_error}
+
+            # If parsed is a list, assume it's the recommendations list
+            if isinstance(parsed, list):
+                recommendations = parsed
+                # Just pass through as-is (OpenAI should provide d3_js)
+                return {'dataInfo': data_info, 'preview': preview, 'recommendations': recommendations}
+
+            # Otherwise return raw model text (unknown structure)
+            return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+        except Exception:
+            # Any unexpected parsing error -> return raw model text
+            return {'dataInfo': data_info, 'preview': preview, 'recommendations_text': model_text}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/process_h5ad")
+async def process_h5ad(file: UploadFile = File(...)):
+    import io, pandas as pd, numpy as np, h5py
+
+    NUMERIC_COLS = [
+        "nCount_Exon","nCount_RNA","nCount_SCT",
+        "nFeature_Exon","nFeature_RNA","nFeature_SCT",
+        "percent.mt"
+    ]
+
+    def safe_cast(value, dtype='str'):
+        if isinstance(value, bytes):
+            value = value.decode('utf-8', errors='ignore')
+        if value is None or value == b'' or value == '':
+            return np.nan if dtype=='float' else ''
+        if dtype=='float':
+            try:
+                return float(value)
+            except:
+                return np.nan
+        return str(value)
+
+    try:
+        buf = await file.read()
+        with h5py.File(io.BytesIO(buf), 'r') as f:
+            obs = f.get('obs')
+            if obs is None or not isinstance(obs, h5py.Group):
+                return {"error": "obs dataset not found or not a Group"}
+
+            columns = []
+            data_dict = {}
+            n_rows = 0
+
+            # 1. 先遍历 obs，处理每列/Group
+            for col in obs:
+                item = obs[col]
+                col_data = []
+
+                if isinstance(item, h5py.Dataset):
+                    col_data = list(item[()])
+                    columns.append(col)
+                elif isinstance(item, h5py.Group):
+                    # 展开 Group: 每个子 dataset 作为新列
+                    for sub in item:
+                        sub_item = item[sub]
+                        if isinstance(sub_item, h5py.Dataset):
+                            sub_col_name = f"{col}.{sub}"
+                            columns.append(sub_col_name)
+                            col_data_sub = list(sub_item[()])
+                            # 补齐长度到当前最大行数
+                            n_rows = max(n_rows, len(col_data_sub))
+                            data_dict[sub_col_name] = col_data_sub
+                    continue  # 已处理子列，不加入 col_data
+                else:
+                    col_data = []
+
+                # 补齐长度
+                n_rows = max(n_rows, len(col_data))
+                data_dict[col] = col_data
+
+            # 2. 补齐所有列长度
+            for col in data_dict:
+                col_len = len(data_dict[col])
+                if col_len < n_rows:
+                    dtype = 'float' if col in NUMERIC_COLS else 'str'
+                    filler = np.nan if dtype=='float' else ''
+                    data_dict[col] += [filler] * (n_rows - col_len)
+
+                # 清洗 bytes/空值
+                dtype = 'float' if col in NUMERIC_COLS else 'str'
+                data_dict[col] = [safe_cast(v, dtype) for v in data_dict[col]]
+
+            df = pd.DataFrame(data_dict)
+
+        # 3. 送给 process_data
+        payload = {
+            "data": {
+                "headers": list(df.columns),
+                "rows": df.values.tolist()
+            }
+        }
+
+        return await process_data(payload)
+
+    except Exception as e:
+        return {"error": str(e)}
 
 @app.post("/api/restart_kernel")
 async def restart_kernel():
