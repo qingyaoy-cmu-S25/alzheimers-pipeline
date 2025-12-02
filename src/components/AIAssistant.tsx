@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { PipelineStep, OutputItem, ChatMessage } from '../types';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { ScrollArea } from './ui/scroll-area';
 import { Textarea } from './ui/textarea';
 import { Badge } from './ui/badge';
 import { 
@@ -277,7 +276,7 @@ export function AIAssistant({
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto">
         <div className="p-4 space-y-4">
           {messages.map((message) => (
             <div
@@ -352,7 +351,7 @@ export function AIAssistant({
           
           <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
       <div className="border-t p-3">
