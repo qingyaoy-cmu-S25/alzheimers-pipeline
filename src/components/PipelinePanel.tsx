@@ -2,7 +2,6 @@ import React from 'react';
 import { CheckCircle2, Circle, Loader2, XCircle } from 'lucide-react';
 import { PipelineStep } from '../types';
 import { cn } from './ui/utils';
-import { ScrollArea } from './ui/scroll-area';
 import { Progress } from './ui/progress';
 
 interface PipelinePanelProps {
@@ -47,7 +46,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
       </div>
 
       {/* Steps list */}
-      <ScrollArea className="flex-1">
+      <div className="flex-1 overflow-y-auto">
         <div className="p-2">
           {steps.length === 0 ? (
             <div className="p-4 text-center text-muted-foreground">
@@ -97,7 +96,7 @@ export const PipelinePanel: React.FC<PipelinePanelProps> = ({
             })
           )}
         </div>
-      </ScrollArea>
+      </div>
     </div>
   );
 };
