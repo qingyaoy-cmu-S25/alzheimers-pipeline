@@ -8,6 +8,7 @@ import { Toaster } from './components/ui/sonner';
 import { useDarkMode } from './darkmode';
 import { ChatMessage, OutputItem, PipelineStep } from './types';
 import { PipelinePanel } from './components/PipelinePanel';
+import { CitationNetworkPage } from './components/CitationNetwork';
 
 const initialMessages: ChatMessage[] = [
   {
@@ -318,76 +319,83 @@ function App() {
         </div>
       </div>
 
-      {/* Main layout with Sidebar and SidePanel */}
-      <div className="h-[calc(100vh-3.5rem)] flex">
-        {/* Sidebar - Fixed width on the far left */}
-        <Sidebar
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
+      {/* Citation Network Full Page View */}
+      {activeSection === 'citation-network' ? (
+        <CitationNetworkPage
+          onBack={() => setActiveSection(null)}
         />
-
-        {/* SidePanel - Appears when a section is active */}
-        {activeSection && (
-          <SidePanel
+      ) : (
+        /* Main layout with Sidebar and SidePanel */
+        <div className="h-[calc(100vh-3.5rem)] flex">
+          {/* Sidebar - Fixed width on the far left */}
+          <Sidebar
             activeSection={activeSection}
-            onClose={() => setActiveSection(null)}
-            notebooks={notebooks}
-            currentNotebook={currentNotebook}
-            onUploadNotebook={handleUploadNotebook}
-            onSelectNotebook={handleSelectNotebook}
-            onDeleteNotebook={handleDeleteNotebook}
-            onRefreshNotebooks={handleRefreshNotebooks}
-            isDark={isDark}
-            toggleDarkMode={toggleDarkMode}
+            onSectionChange={setActiveSection}
           />
-        )}
 
-        {/* Three-column layout */}
-        <div className="flex-1 min-w-0">
-          <ResizablePanelGroup direction="horizontal">
-            {/* Left Panel - Pipeline Steps (dynamic from notebook) */}
-            <ResizablePanel id="pipeline-panel" order={1} defaultSize={20} minSize={15} maxSize={25}>
-              <PipelinePanel
-                steps={steps}
-                currentStepId={currentStepId}
-                onStepClick={(stepId) => setCurrentStepId(stepId)}
-              />
-            </ResizablePanel>
+          {/* SidePanel - Appears when a section is active */}
+          {activeSection && (
+            <SidePanel
+              activeSection={activeSection}
+              onClose={() => setActiveSection(null)}
+              notebooks={notebooks}
+              currentNotebook={currentNotebook}
+              onUploadNotebook={handleUploadNotebook}
+              onSelectNotebook={handleSelectNotebook}
+              onDeleteNotebook={handleDeleteNotebook}
+              onRefreshNotebooks={handleRefreshNotebooks}
+              isDark={isDark}
+              toggleDarkMode={toggleDarkMode}
+            />
+          )}
 
-            <ResizableHandle withHandle />
+          {/* Three-column layout */}
+          <div className="flex-1 min-w-0">
+            <ResizablePanelGroup direction="horizontal">
+              {/* Left Panel - Pipeline Steps (dynamic from notebook) */}
+              <ResizablePanel id="pipeline-panel" order={1} defaultSize={20} minSize={15} maxSize={25}>
+                <PipelinePanel
+                  steps={steps}
+                  currentStepId={currentStepId}
+                  onStepClick={(stepId) => setCurrentStepId(stepId)}
+                />
+              </ResizablePanel>
 
-            {/* Middle Panel - Code & Output */}
-            <ResizablePanel id="code-panel" order={2} defaultSize={50} minSize={30} maxSize={60}>
-              <CodeEditor
-                currentStep={getCurrentStep()}
-                code={code}
-                setCode={setCode}
-                outputs={outputs}
-                onStepComplete={handleStepComplete}
-                onCodeChange={(newCode) => setCode(newCode)}
-                onSendErrorToChat={handleSendErrorToChat}
-                addOutput={addOutput}
-                toggleReportItem={toggleReportItem}
-                removeOutput={removeOutput}
-              />
-            </ResizablePanel>
+              <ResizableHandle withHandle />
 
-            <ResizableHandle withHandle />
+              {/* Middle Panel - Code & Output */}
+              <ResizablePanel id="code-panel" order={2} defaultSize={50} minSize={30} maxSize={60}>
+                <CodeEditor
+                  currentStep={getCurrentStep()}
+                  code={code}
+                  setCode={setCode}
+                  outputs={outputs}
+                  onStepComplete={handleStepComplete}
+                  onCodeChange={(newCode) => setCode(newCode)}
+                  onSendErrorToChat={handleSendErrorToChat}
+                  addOutput={addOutput}
+                  toggleReportItem={toggleReportItem}
+                  removeOutput={removeOutput}
+                />
+              </ResizablePanel>
 
-            {/* Right Panel - AI Assistant */}
-            <ResizablePanel id="ai-panel" order={3} defaultSize={30} minSize={20} maxSize={40}>
-              <AIAssistant
-                currentStep={getCurrentStep()}
-                outputs={outputs}
-                code={code}
-                messages={messages}
-                onSendMessage={handleSendMessage}
-                currentCode={code}
-              />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+              <ResizableHandle withHandle />
+
+              {/* Right Panel - AI Assistant */}
+              <ResizablePanel id="ai-panel" order={3} defaultSize={30} minSize={20} maxSize={40}>
+                <AIAssistant
+                  currentStep={getCurrentStep()}
+                  outputs={outputs}
+                  code={code}
+                  messages={messages}
+                  onSendMessage={handleSendMessage}
+                  currentCode={code}
+                />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

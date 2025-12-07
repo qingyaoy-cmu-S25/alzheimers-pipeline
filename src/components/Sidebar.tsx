@@ -1,7 +1,7 @@
 import React from 'react';
-import { FileText, Folder, Settings, HelpCircle, Brain } from 'lucide-react';
+import { FileText, Folder, Settings, HelpCircle, Brain, Network } from 'lucide-react';
 
-export type SidebarSection = 'notebooks' | 'files' | 'settings' | null;
+export type SidebarSection = 'notebooks' | 'files' | 'settings' | 'citation-network' | null;
 
 interface SidebarProps {
   activeSection: SidebarSection;
@@ -12,6 +12,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange
   const sections = [
     { id: 'notebooks' as const, icon: FileText, label: 'Notebooks', tooltip: 'Jupyter Notebooks' },
     { id: 'files' as const, icon: Folder, label: 'Files', tooltip: 'Workspace Files' },
+    { id: 'citation-network' as const, icon: Network, label: 'Citation Network', tooltip: 'Citation Network Visualization' },
     { id: 'settings' as const, icon: Settings, label: 'Settings', tooltip: 'Settings' },
   ];
 

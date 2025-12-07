@@ -46,6 +46,7 @@ export const SidePanel: React.FC<SidePanelProps> = ({
     notebooks: 'Notebooks',
     files: 'Workspace Files',
     settings: 'Settings',
+    'citation-network': 'Citation Network',
   };
 
   return (
