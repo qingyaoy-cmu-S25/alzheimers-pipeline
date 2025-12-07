@@ -148,3 +148,4 @@ backend/uploads/
 backend/main.py
 backend/models/openai_chat.py
 >>>>>>> init
+CITATION_NETWORK_MERGE.md
