@@ -293,10 +293,10 @@ function App() {
       {/* Header */}
       <div className="h-14 border-b bg-card flex items-center px-4 justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold">
-            Bio
+          <div className="w-8 h-8 rounded bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-semibold text-xs">
+            SA
           </div>
-          <h1 className="text-lg font-semibold">Biomedical Workflow Platform</h1>
+          <h1 className="text-lg font-semibold">ScholarAgent</h1>
         </div>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">

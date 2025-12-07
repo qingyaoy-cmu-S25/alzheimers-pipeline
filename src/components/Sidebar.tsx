@@ -1,5 +1,5 @@
 import React from 'react';
-import { FileText, Folder, Settings, HelpCircle, Brain, Network } from 'lucide-react';
+import { FileText, Folder, Settings, HelpCircle, Network } from 'lucide-react';
 
 export type SidebarSection = 'notebooks' | 'files' | 'settings' | 'citation-network' | null;
 
@@ -18,9 +18,18 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeSection, onSectionChange
 
   return (
     <div className="w-12 bg-gray-800 flex flex-col items-center py-4 gap-2">
-      {/* Logo/Title */}
-      <div className="mb-4 pb-4 border-b border-gray-700 w-full flex justify-center" title="Alzheimer's Pipeline">
-        <Brain className="w-7 h-7 text-purple-400" />
+      {/* Logo/Title - SA for ScholarAgent */}
+      <div className="mb-4 pb-4 border-b border-gray-700 w-full flex justify-center" title="ScholarAgent">
+        <svg width="28" height="28" viewBox="0 0 100 100" className="text-purple-400">
+          <defs>
+            <linearGradient id="saGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" style={{ stopColor: '#2196F3', stopOpacity: 1 }} />
+              <stop offset="100%" style={{ stopColor: '#00BCD4', stopOpacity: 1 }} />
+            </linearGradient>
+          </defs>
+          <rect width="100" height="100" rx="20" fill="url(#saGrad)"/>
+          <text x="50" y="68" fontFamily="Inter, -apple-system, sans-serif" fontSize="42" fontWeight="700" fill="white" textAnchor="middle">SA</text>
+        </svg>
       </div>
 
       {/* Section Icons */}
