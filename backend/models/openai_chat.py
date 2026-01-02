@@ -77,7 +77,7 @@ async def get_openai_streaming_response(messages: List[Dict[str, str]], model: s
     """
     try:
         # Determine model/deployment to call. For Azure, prefer OPENAI_DEPLOYMENT env var.
-        chosen_model = model or OPENAI_DEPLOYMENT or os.getenv('OPENAI_MODEL') or 'gpt-3.5-turbo'
+        chosen_model = model or OPENAI_DEPLOYMENT or os.getenv('OPENAI_MODEL') or 'gpt-5.1'
         print(f"Starting OpenAI stream for model/deployment: {chosen_model}")
 
         # Create completion request. Azure's deployments sometimes expect a different

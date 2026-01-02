@@ -35,7 +35,7 @@ app = FastAPI(title="Alzheimer's Analysis Pipeline API")
 # Global state for current notebook
 NOTEBOOKS_DIR = os.path.join(os.path.dirname(__file__), "notebooks")  # Local cache directory
 WORKSPACE_DIR = os.path.join(os.path.dirname(__file__), "workspace")  # Workspace for data files
-CURRENT_NOTEBOOK = "colab.ipynb"  # Default notebook
+CURRENT_NOTEBOOK = "demo_notebook.ipynb"  # Default demo notebook
 
 # Ensure workspace directory exists
 os.makedirs(WORKSPACE_DIR, exist_ok=True)
@@ -588,9 +588,12 @@ def _resolve_notebook_path(path: Optional[str] = None) -> str:
 
 
 @app.get("/api/notebook/cells")
-async def list_notebook_cells(path: Optional[str] = None):
-    """List code cells from a Jupyter notebook as step candidates."""
-    nb_path = _resolve_notebook_path(path)
+async def list_notebook_cells():
+    """List code cells from a Jupyter notebook as step candidates.
+
+    Uses the preceding markdown cell as the section title if available.
+    """
+    nb_path = _resolve_notebook_path()
     if not os.path.exists(nb_path):
         raise HTTPException(status_code=404, detail=f"Notebook not found: {nb_path}")
 
@@ -603,28 +606,56 @@ async def list_notebook_cells(path: Optional[str] = None):
     cells = nb_data.get("cells", [])
     result = []
     step_index = 0
+    last_markdown_title = None  # Track the most recent markdown section title
+
     for idx, cell in enumerate(cells):
-        if cell.get("cell_type") != "code":
+        cell_type = cell.get("cell_type")
+
+        # If it's a markdown cell, extract the title for the next code cell(s)
+        if cell_type == "markdown":
+            source = cell.get("source", [])
+            if isinstance(source, list):
+                source_text = "".join(source)
+            else:
+                source_text = str(source)
+
+            # Extract first heading (## Title) from markdown
+            for line in source_text.splitlines():
+                line = line.strip()
+                if line.startswith("#"):
+                    # Remove markdown heading markers and get the title
+                    last_markdown_title = line.lstrip("#").strip()
+                    break
             continue
+
+        # Skip non-code cells
+        if cell_type != "code":
+            continue
+
         source = cell.get("source", [])
         if isinstance(source, list):
             first_line = next((line for line in source if str(line).strip() != ""), "")
         else:
-            # string
             lines = str(source).splitlines()
             first_line = next((line for line in lines if line.strip() != ""), "")
 
-        title = first_line.strip()
-        # Strip leading comment markers for a cleaner title
-        if title.startswith("#"):
-            title = title.lstrip("#").strip()
+        # Use markdown title if available, otherwise fall back to code first line
+        if last_markdown_title:
+            title = last_markdown_title
+            description = last_markdown_title
+        else:
+            title = first_line.strip()
+            # Strip leading comment markers for a cleaner title
+            if title.startswith("#"):
+                title = title.lstrip("#").strip()
+            description = title or "Notebook code cell"
 
         step_index += 1
         result.append({
             "index": idx,               # actual notebook cell index
             "stepNumber": step_index,   # 1-based step sequence among code cells
             "title": title or f"Cell {idx}",
-            "description": title or "Notebook code cell",
+            "description": description,
         })
 
     return {"notebook": nb_path, "steps": result}
