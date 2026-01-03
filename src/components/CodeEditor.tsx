@@ -367,7 +367,7 @@ export function CodeEditor({
 
             {/* Code editor (FileUploader disabled - always show code editor) */}
             <div className="flex-1 p-4 overflow-auto">
-              {false && currentStep.title.toLowerCase().includes('visual') ? (
+              {false && currentStep?.title.toLowerCase().includes('visual') ? (
                 <FileUploader
                   onFileUpload={async (file, parsed) => {
                     toast.success(`File ${file.name} uploaded successfully`);
