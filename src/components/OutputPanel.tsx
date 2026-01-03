@@ -235,11 +235,7 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerat
             <Badge variant="secondary">{outputs.length}</Badge>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">
-            {outputs.filter(o => o.addedToReport).length} added to report
-          </span>
-        </div>
+        {/* Report feature hidden for now */}
       </div>
 
       {/* Outputs */}
@@ -262,18 +258,7 @@ export function OutputPanel({ outputs, toggleReportItem, removeOutput, onGenerat
                     </Badge>
                   </div>
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => toggleReportItem(output.id)}
-                    >
-                      {output.addedToReport ? (
-                        <CheckSquare className="w-4 h-4 text-blue-500" />
-                      ) : (
-                        <Square className="w-4 h-4" />
-                      )}
-                    </Button>
+                    {/* Report checkbox hidden for now */}
                     <Button
                       variant="ghost"
                       size="icon"
