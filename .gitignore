@@ -136,16 +136,12 @@ tmp/
 # Backup files
 *.bak
 *.backup
-<<<<<<< HEAD
 
 # Uploaded notebooks and user files
-backend/notebooks/*.ipynb
 backend/notebooks/*
 !backend/notebooks/.gitkeep
+!backend/notebooks/demo_notebook.ipynb
 backend/uploads/
 !backend/uploads/.gitkeep
-=======
-backend/main.py
-backend/models/openai_chat.py
->>>>>>> init
+
 CITATION_NETWORK_MERGE.md
