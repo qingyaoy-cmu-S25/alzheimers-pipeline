@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from './components/ui/resizable';
 import { CodeEditor } from './components/CodeEditor';
 import { AIAssistant } from './components/AIAssistant';
@@ -127,10 +127,14 @@ function App() {
     }, 100);
   };
 
+  // Counter for unique IDs
+  const outputIdCounter = useRef(0);
+
   const addOutput = (output: Omit<OutputItem, 'id' | 'timestamp' | 'addedToReport'>) => {
+    outputIdCounter.current += 1;
     const newOutput: OutputItem = {
       ...output,
-      id: Date.now().toString(),
+      id: `output-${Date.now()}-${outputIdCounter.current}`,
       timestamp: new Date(),
       addedToReport: false,
     };
