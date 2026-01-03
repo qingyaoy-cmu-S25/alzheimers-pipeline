@@ -96,11 +96,8 @@ async def get_openai_streaming_response(messages: List[Dict[str, str]], model: s
         else:
             request_kwargs['temperature'] = 0.7
 
-        # If configured with an explicit base URL (likely Azure), use Azure-compatible param
-        if OPENAI_BASE_URL:
-            request_kwargs['max_completion_tokens'] = 2000
-        else:
-            request_kwargs['max_tokens'] = 2000
+        # Use max_completion_tokens (required for newer models like GPT-5.1 and Azure)
+        request_kwargs['max_completion_tokens'] = 2000
 
         response = openai_client.chat.completions.create(**request_kwargs)
         
